@@ -1,0 +1,271 @@
+(lldb) target create "/Applications/Ulanzi Studio.app/Contents/Frameworks/kwdm.dylib"
+Current executable set to '/Applications/Ulanzi Studio.app/Contents/Frameworks/kwdm.dylib' (arm64).
+(lldb) disassemble --start-address 0x3274 --count 220
+kwdm.dylib`__20-[KehwinDevice init]_block_invoke:
+kwdm.dylib[0x3274] <+0>:   sub    sp, sp, #0xe0
+kwdm.dylib[0x3278] <+4>:   stp    d13, d12, [sp, #0x50]
+kwdm.dylib[0x327c] <+8>:   stp    d11, d10, [sp, #0x60]
+kwdm.dylib[0x3280] <+12>:  stp    d9, d8, [sp, #0x70]
+kwdm.dylib[0x3284] <+16>:  stp    x28, x27, [sp, #0x80]
+kwdm.dylib[0x3288] <+20>:  stp    x26, x25, [sp, #0x90]
+kwdm.dylib[0x328c] <+24>:  stp    x24, x23, [sp, #0xa0]
+kwdm.dylib[0x3290] <+28>:  stp    x22, x21, [sp, #0xb0]
+kwdm.dylib[0x3294] <+32>:  stp    x20, x19, [sp, #0xc0]
+kwdm.dylib[0x3298] <+36>:  stp    x29, x30, [sp, #0xd0]
+kwdm.dylib[0x329c] <+40>:  add    x29, sp, #0xd0
+kwdm.dylib[0x32a0] <+44>:  mov    x21, x0
+kwdm.dylib[0x32a4] <+48>:  adrp   x8, 57
+kwdm.dylib[0x32a8] <+52>:  ldr    x8, [x8, #0xc8]
+kwdm.dylib[0x32ac] <+56>:  ldr    x8, [x8]
+kwdm.dylib[0x32b0] <+60>:  str    x8, [sp, #0x48]
+kwdm.dylib[0x32b4] <+64>:  adrp   x20, 70
+kwdm.dylib[0x32b8] <+68>:  ldr    x0, [x20, #0x5a8]
+kwdm.dylib[0x32bc] <+72>:  bl     0x29be0                   ; objc_msgSend$now
+kwdm.dylib[0x32c0] <+76>:  fmov   d8, d0
+kwdm.dylib[0x32c4] <+80>:  adrp   x19, 70
+kwdm.dylib[0x32c8] <+84>:  ldr    x0, [x19, #0x5b0]
+kwdm.dylib[0x32cc] <+88>:  bl     0x28240                   ; objc_msgSend$deviceHeartbeatMessage
+kwdm.dylib[0x32d0] <+92>:  mov    x29, x29
+kwdm.dylib[0x32d4] <+96>:  bl     0x27b24                   ; symbol stub for: objc_retainAutoreleasedReturnValue
+kwdm.dylib[0x32d8] <+100>: str    x0, [sp, #0x8]
+kwdm.dylib[0x32dc] <+104>: ldr    x0, [x19, #0x5b0]
+kwdm.dylib[0x32e0] <+108>: ldr    x8, [x21, #0x20]
+kwdm.dylib[0x32e4] <+112>: ldr    w2, [x8, #0x38]
+kwdm.dylib[0x32e8] <+116>: bl     0x284c0                   ; objc_msgSend$dongleAuthMessage:
+kwdm.dylib[0x32ec] <+120>: mov    x29, x29
+kwdm.dylib[0x32f0] <+124>: bl     0x27b24                   ; symbol stub for: objc_retainAutoreleasedReturnValue
+kwdm.dylib[0x32f4] <+128>: str    x0, [sp]
+kwdm.dylib[0x32f8] <+132>: ldr    x0, [x19, #0x5b0]
+kwdm.dylib[0x32fc] <+136>: mov    w2, #0x1                  ; =1 
+kwdm.dylib[0x3300] <+140>: bl     0x2b7e0                   ; objc_msgSend$setExpertMouseSWStatus:
+kwdm.dylib[0x3304] <+144>: mov    x29, x29
+kwdm.dylib[0x3308] <+148>: bl     0x27b24                   ; symbol stub for: objc_retainAutoreleasedReturnValue
+kwdm.dylib[0x330c] <+152>: mov    x22, x0
+kwdm.dylib[0x3310] <+156>: ldr    x0, [x19, #0x5b0]
+kwdm.dylib[0x3314] <+160>: mov    w2, #0x1                  ; =1 
+kwdm.dylib[0x3318] <+164>: bl     0x2afe0                   ; objc_msgSend$setDeviceDialMiniLedHeartbeatMessage:
+kwdm.dylib[0x331c] <+168>: mov    x29, x29
+kwdm.dylib[0x3320] <+172>: bl     0x27b24                   ; symbol stub for: objc_retainAutoreleasedReturnValue
+kwdm.dylib[0x3324] <+176>: mov    x23, x0
+kwdm.dylib[0x3328] <+180>: ldr    x0, [x19, #0x5b0]
+kwdm.dylib[0x332c] <+184>: mov    w2, #0x0                  ; =0 
+kwdm.dylib[0x3330] <+188>: bl     0x2afe0                   ; objc_msgSend$setDeviceDialMiniLedHeartbeatMessage:
+kwdm.dylib[0x3334] <+192>: mov    x29, x29
+kwdm.dylib[0x3338] <+196>: bl     0x27b24                   ; symbol stub for: objc_retainAutoreleasedReturnValue
+kwdm.dylib[0x333c] <+200>: str    x0, [sp, #0x10]
+kwdm.dylib[0x3340] <+204>: adrp   x8, 70
+kwdm.dylib[0x3344] <+208>: ldr    x0, [x8, #0x588]
+kwdm.dylib[0x3348] <+212>: adrp   x3, 43
+kwdm.dylib[0x334c] <+216>: add    x3, x3, #0x8b9            ; "/Users/miyuki/Code/XCode/KehwinMouseLibV2/KehwinAudioMouseLib/KehwinAudioMouseLib/Device/KehwinDevice.m"
+kwdm.dylib[0x3350] <+220>: adrp   x4, 43
+kwdm.dylib[0x3354] <+224>: add    x4, x4, #0x948            ; "-[KehwinDevice init]_block_invoke"
+kwdm.dylib[0x3358] <+228>: adrp   x6, 57
+kwdm.dylib[0x335c] <+232>: add    x6, x6, #0x680            ; @0x002000000002e96a
+kwdm.dylib[0x3360] <+236>: mov    w2, #0x3                  ; =3 
+kwdm.dylib[0x3364] <+240>: mov    w5, #0x79                 ; =121 
+kwdm.dylib[0x3368] <+244>: bl     0x29b20                   ; objc_msgSend$logWithLevel:file:function:line:format:
+kwdm.dylib[0x336c] <+248>: ldr    x8, [x21, #0x20]
+kwdm.dylib[0x3370] <+252>: ldrb   w8, [x8, #0x32]
+kwdm.dylib[0x3374] <+256>: cbz    w8, 0x35cc                ; <+856>
+kwdm.dylib[0x3378] <+260>: adrp   x8, 42
+kwdm.dylib[0x337c] <+264>: ldr    d10, [x8, #0xc70]
+kwdm.dylib[0x3380] <+268>: adrp   x8, 42
+kwdm.dylib[0x3384] <+272>: ldr    s11, [x8, #0xc88]
+kwdm.dylib[0x3388] <+276>: mov    w19, #0x447a0000          ; =1148846080 
+kwdm.dylib[0x338c] <+280>: adrp   x24, 70
+kwdm.dylib[0x3390] <+284>: adrp   x8, 42
+kwdm.dylib[0x3394] <+288>: ldr    s12, [x8, #0xc8c]
+kwdm.dylib[0x3398] <+292>: ldr    x0, [x20, #0x5a8]
+kwdm.dylib[0x339c] <+296>: bl     0x29be0                   ; objc_msgSend$now
+kwdm.dylib[0x33a0] <+300>: fmov   d9, d0
+kwdm.dylib[0x33a4] <+304>: ldr    x0, [x21, #0x20]
+kwdm.dylib[0x33a8] <+308>: ldrb   w8, [x0, #0x35]
+kwdm.dylib[0x33ac] <+312>: cbz    w8, 0x351c                ; <+680>
+kwdm.dylib[0x33b0] <+316>: add    x0, x0, #0x8
+kwdm.dylib[0x33b4] <+320>: bl     0x27b48                   ; symbol stub for: os_unfair_lock_lock
+kwdm.dylib[0x33b8] <+324>: ldr    x0, [x21, #0x20]
+kwdm.dylib[0x33bc] <+328>: bl     0x2bea0                   ; objc_msgSend$writeWorker
+kwdm.dylib[0x33c0] <+332>: mov    x25, x0
+kwdm.dylib[0x33c4] <+336>: ldr    x8, [x21, #0x20]
+kwdm.dylib[0x33c8] <+340>: add    x0, x8, #0x8
+kwdm.dylib[0x33cc] <+344>: bl     0x27b54                   ; symbol stub for: os_unfair_lock_unlock
+kwdm.dylib[0x33d0] <+348>: ldr    x0, [x21, #0x20]
+kwdm.dylib[0x33d4] <+352>: ldrb   w8, [x0, #0x92]
+kwdm.dylib[0x33d8] <+356>: cbz    w8, 0x33f4                ; <+384>
+kwdm.dylib[0x33dc] <+360>: ldrb   w8, [x0, #0x91]
+kwdm.dylib[0x33e0] <+364>: cbz    w8, 0x33f4                ; <+384>
+kwdm.dylib[0x33e4] <+368>: mov    w2, #0x1f4                ; =500 
+kwdm.dylib[0x33e8] <+372>: mov    x3, x22
+kwdm.dylib[0x33ec] <+376>: bl     0x2abe0                   ; objc_msgSend$sendData:value:
+kwdm.dylib[0x33f0] <+380>: ldr    x0, [x21, #0x20]
+kwdm.dylib[0x33f4] <+384>: ldrb   w8, [x0, #0x94]
+kwdm.dylib[0x33f8] <+388>: cbz    w8, 0x34cc                ; <+600>
+kwdm.dylib[0x33fc] <+392>: strb   wzr, [x0, #0x94]
+kwdm.dylib[0x3400] <+396>: ldr    x0, [x21, #0x20]
+kwdm.dylib[0x3404] <+400>: ldrb   w26, [x0, #0x93]
+kwdm.dylib[0x3408] <+404>: cmp    w26, #0x0
+kwdm.dylib[0x340c] <+408>: ldr    x8, [sp, #0x10]
+kwdm.dylib[0x3410] <+412>: csel   x3, x8, x23, eq
+kwdm.dylib[0x3414] <+416>: mov    w2, #0x61                 ; =97 
+kwdm.dylib[0x3418] <+420>: bl     0x2abe0                   ; objc_msgSend$sendData:value:
+kwdm.dylib[0x341c] <+424>: adrp   x8, 57
+kwdm.dylib[0x3420] <+428>: add    x8, x8, #0x6c0            ; @0x002000000002e97c
+kwdm.dylib[0x3424] <+432>: str    x8, [sp, #0x30]
+kwdm.dylib[0x3428] <+436>: adrp   x8, 57
+kwdm.dylib[0x342c] <+440>: add    x9, x8, #0x6a0            ; @0x002000000002e977
+kwdm.dylib[0x3430] <+444>: adrp   x8, 57
+kwdm.dylib[0x3434] <+448>: add    x8, x8, #0x6e0            ; @0x002000000002e997
+kwdm.dylib[0x3438] <+452>: stp    x9, x8, [sp, #0x18]
+kwdm.dylib[0x343c] <+456>: adrp   x28, 70
+kwdm.dylib[0x3440] <+460>: ldr    x0, [x28, #0x5b8]
+kwdm.dylib[0x3444] <+464>: mov    w2, #0x0                  ; =0 
+kwdm.dylib[0x3448] <+468>: bl     0x29c20                   ; objc_msgSend$numberWithInt:
+kwdm.dylib[0x344c] <+472>: mov    x29, x29
+kwdm.dylib[0x3450] <+476>: bl     0x27b24                   ; symbol stub for: objc_retainAutoreleasedReturnValue
+kwdm.dylib[0x3454] <+480>: mov    x27, x0
+kwdm.dylib[0x3458] <+484>: str    x0, [sp, #0x38]
+kwdm.dylib[0x345c] <+488>: adrp   x8, 57
+kwdm.dylib[0x3460] <+492>: add    x8, x8, #0x700            ; @0x002000000002e99e
+kwdm.dylib[0x3464] <+496>: str    x8, [sp, #0x28]
+kwdm.dylib[0x3468] <+500>: ldr    x0, [x28, #0x5b8]
+kwdm.dylib[0x346c] <+504>: mov    x2, x26
+kwdm.dylib[0x3470] <+508>: bl     0x29c20                   ; objc_msgSend$numberWithInt:
+kwdm.dylib[0x3474] <+512>: mov    x29, x29
+kwdm.dylib[0x3478] <+516>: bl     0x27b24                   ; symbol stub for: objc_retainAutoreleasedReturnValue
+kwdm.dylib[0x347c] <+520>: mov    x26, x0
+kwdm.dylib[0x3480] <+524>: str    x0, [sp, #0x40]
+kwdm.dylib[0x3484] <+528>: adrp   x8, 70
+kwdm.dylib[0x3488] <+532>: ldr    x0, [x8, #0x5c0]
+kwdm.dylib[0x348c] <+536>: add    x2, sp, #0x30
+kwdm.dylib[0x3490] <+540>: add    x3, sp, #0x18
+kwdm.dylib[0x3494] <+544>: mov    w4, #0x3                  ; =3 
+kwdm.dylib[0x3498] <+548>: bl     0x28460                   ; objc_msgSend$dictionaryWithObjects:forKeys:count:
+kwdm.dylib[0x349c] <+552>: mov    x29, x29
+kwdm.dylib[0x34a0] <+556>: bl     0x27b24                   ; symbol stub for: objc_retainAutoreleasedReturnValue
+kwdm.dylib[0x34a4] <+560>: mov    x28, x0
+kwdm.dylib[0x34a8] <+564>: mov    x0, x26
+kwdm.dylib[0x34ac] <+568>: bl     0x27af4                   ; symbol stub for: objc_release
+kwdm.dylib[0x34b0] <+572>: mov    x0, x27
+kwdm.dylib[0x34b4] <+576>: bl     0x27af4                   ; symbol stub for: objc_release
+kwdm.dylib[0x34b8] <+580>: ldr    x0, [x21, #0x20]
+kwdm.dylib[0x34bc] <+584>: mov    x2, x28
+kwdm.dylib[0x34c0] <+588>: bl     0x27ee0                   ; objc_msgSend$callDeviceMessage:
+kwdm.dylib[0x34c4] <+592>: mov    x0, x28
+kwdm.dylib[0x34c8] <+596>: bl     0x27af4                   ; symbol stub for: objc_release
+kwdm.dylib[0x34cc] <+600>: fsub   d0, d9, d8
+kwdm.dylib[0x34d0] <+604>: fcmp   d0, d10
+kwdm.dylib[0x34d4] <+608>: b.lt   0x3548                    ; <+724>
+kwdm.dylib[0x34d8] <+612>: ldr    x0, [x21, #0x20]
+kwdm.dylib[0x34dc] <+616>: ldrb   w8, [x0, #0x92]
+kwdm.dylib[0x34e0] <+620>: cbz    w8, 0x34f4                ; <+640>
+kwdm.dylib[0x34e4] <+624>: mov    w2, #0x49                 ; =73 
+kwdm.dylib[0x34e8] <+628>: mov    x3, x22
+kwdm.dylib[0x34ec] <+632>: bl     0x2abe0                   ; objc_msgSend$sendData:value:
+kwdm.dylib[0x34f0] <+636>: ldr    x0, [x21, #0x20]
+kwdm.dylib[0x34f4] <+640>: ldrb   w8, [x0, #0x93]
+kwdm.dylib[0x34f8] <+644>: cbz    w8, 0x350c                ; <+664>
+kwdm.dylib[0x34fc] <+648>: mov    w2, #0x61                 ; =97 
+kwdm.dylib[0x3500] <+652>: mov    x3, x23
+kwdm.dylib[0x3504] <+656>: bl     0x2abe0                   ; objc_msgSend$sendData:value:
+kwdm.dylib[0x3508] <+660>: ldr    x0, [x21, #0x20]
+kwdm.dylib[0x350c] <+664>: mov    w2, #0x1f4                ; =500 
+kwdm.dylib[0x3510] <+668>: ldr    x3, [sp, #0x8]
+kwdm.dylib[0x3514] <+672>: bl     0x2abe0                   ; objc_msgSend$sendData:value:
+kwdm.dylib[0x3518] <+676>: b      0x3540                    ; <+716>
+kwdm.dylib[0x351c] <+680>: fsub   d0, d9, d8
+kwdm.dylib[0x3520] <+684>: fcmp   d0, d10
+kwdm.dylib[0x3524] <+688>: b.ge   0x3530                    ; <+700>
+kwdm.dylib[0x3528] <+692>: mov    w25, #0x0                 ; =0 
+kwdm.dylib[0x352c] <+696>: b      0x3548                    ; <+724>
+kwdm.dylib[0x3530] <+700>: mov    w2, #0x1                  ; =1 
+kwdm.dylib[0x3534] <+704>: ldr    x3, [sp]
+kwdm.dylib[0x3538] <+708>: bl     0x2abe0                   ; objc_msgSend$sendData:value:
+kwdm.dylib[0x353c] <+712>: mov    w25, #0x0                 ; =0 
+kwdm.dylib[0x3540] <+716>: cmp    w0, #0x0
+kwdm.dylib[0x3544] <+720>: fcsel  d8, d9, d8, ne
+kwdm.dylib[0x3548] <+724>: ldr    x0, [x21, #0x20]
+kwdm.dylib[0x354c] <+728>: ldrb   w8, [x0, #0x3c]
+kwdm.dylib[0x3550] <+732>: cbz    w8, 0x355c                ; <+744>
+kwdm.dylib[0x3554] <+736>: bl     0x285a0                   ; objc_msgSend$dongleUpgradeTime
+kwdm.dylib[0x3558] <+740>: b      0x3570                    ; <+764>
+kwdm.dylib[0x355c] <+744>: ldrb   w8, [x0, #0x48]
+kwdm.dylib[0x3560] <+748>: cbnz   w8, 0x356c                ; <+760>
+kwdm.dylib[0x3564] <+752>: ldrb   w8, [x0, #0x58]
+kwdm.dylib[0x3568] <+756>: cbz    w8, 0x35ac                ; <+824>
+kwdm.dylib[0x356c] <+760>: bl     0x28340                   ; objc_msgSend$deviceUpgradeTime
+kwdm.dylib[0x3570] <+764>: scvtf  s0, w0
+kwdm.dylib[0x3574] <+768>: fmov   s1, w19
+kwdm.dylib[0x3578] <+772>: fdiv   s0, s0, s1
+kwdm.dylib[0x357c] <+776>: cmp    w25, #0x1
+kwdm.dylib[0x3580] <+780>: scvtf  s2, w25
+kwdm.dylib[0x3584] <+784>: fdiv   s1, s2, s1
+kwdm.dylib[0x3588] <+788>: fadd   s1, s1, s0
+kwdm.dylib[0x358c] <+792>: fcsel  s0, s0, s1, lt
+kwdm.dylib[0x3590] <+796>: ldr    x0, [x24, #0x5c8]
+kwdm.dylib[0x3594] <+800>: fcvt   d0, s0
+kwdm.dylib[0x3598] <+804>: bl     0x2b9a0                   ; objc_msgSend$sleepForTimeInterval:
+kwdm.dylib[0x359c] <+808>: ldr    x8, [x21, #0x20]
+kwdm.dylib[0x35a0] <+812>: ldrb   w8, [x8, #0x32]
+kwdm.dylib[0x35a4] <+816>: cbnz   w8, 0x3398                ; <+292>
+kwdm.dylib[0x35a8] <+820>: b      0x35cc                    ; <+856>
+kwdm.dylib[0x35ac] <+824>: bl     0x286e0                   ; objc_msgSend$getConnectionMode
+kwdm.dylib[0x35b0] <+828>: fmov   s0, s11
+kwdm.dylib[0x35b4] <+832>: cmp    w0, #0x1
+kwdm.dylib[0x35b8] <+836>: b.eq   0x3590                    ; <+796>
+kwdm.dylib[0x35bc] <+840>: ldr    x0, [x21, #0x20]
+kwdm.dylib[0x35c0] <+844>: bl     0x286e0                   ; objc_msgSend$getConnectionMode
+kwdm.dylib[0x35c4] <+848>: fmov   s0, s12
+kwdm.dylib[0x35c8] <+852>: b      0x3590                    ; <+796>
+kwdm.dylib[0x35cc] <+856>: adrp   x8, 70
+kwdm.dylib[0x35d0] <+860>: ldr    x0, [x8, #0x588]
+kwdm.dylib[0x35d4] <+864>: adrp   x3, 43
+kwdm.dylib[0x35d8] <+868>: add    x3, x3, #0x8b9            ; "/Users/miyuki/Code/XCode/KehwinMouseLibV2/KehwinAudioMouseLib/KehwinAudioMouseLib/Device/KehwinDevice.m"
+kwdm.dylib[0x35dc] <+872>: adrp   x4, 43
+kwdm.dylib[0x35e0] <+876>: add    x4, x4, #0x948            ; "-[KehwinDevice init]_block_invoke"
+(lldb) disassemble -n "+[MessageHelper deviceHeartbeatMessage]"
+kwdm.dylib`+[MessageHelper deviceHeartbeatMessage]:
+kwdm.dylib[0x20dc0] <+0>:   sub    sp, sp, #0x60
+kwdm.dylib[0x20dc4] <+4>:   stp    x29, x30, [sp, #0x50]
+kwdm.dylib[0x20dc8] <+8>:   add    x29, sp, #0x50
+kwdm.dylib[0x20dcc] <+12>:  adrp   x8, 28
+kwdm.dylib[0x20dd0] <+16>:  ldr    x8, [x8, #0xc8]
+kwdm.dylib[0x20dd4] <+20>:  ldr    x8, [x8]
+kwdm.dylib[0x20dd8] <+24>:  stur   x8, [x29, #-0x8]
+kwdm.dylib[0x20ddc] <+28>:  mov    w8, #0x106                ; =262 
+kwdm.dylib[0x20de0] <+32>:  movk   w8, #0x23, lsl #16
+kwdm.dylib[0x20de4] <+36>:  str    w8, [sp, #0x8]
+kwdm.dylib[0x20de8] <+40>:  mov    w8, #0x1                  ; =1 
+kwdm.dylib[0x20dec] <+44>:  strb   w8, [sp, #0xc]
+kwdm.dylib[0x20df0] <+48>:  movi.2d v0, #0000000000000000
+kwdm.dylib[0x20df4] <+52>:  stur   q0, [sp, #0xd]
+kwdm.dylib[0x20df8] <+56>:  stur   q0, [sp, #0x1d]
+kwdm.dylib[0x20dfc] <+60>:  stur   q0, [sp, #0x2d]
+kwdm.dylib[0x20e00] <+64>:  stur   q0, [sp, #0x38]
+kwdm.dylib[0x20e04] <+68>:  add    x2, sp, #0x8
+kwdm.dylib[0x20e08] <+72>:  mov    w3, #0x40                 ; =64 
+kwdm.dylib[0x20e0c] <+76>:  bl     0x2bca0                   ; objc_msgSend$toMessage:length:
+kwdm.dylib[0x20e10] <+80>:  mov    x29, x29
+kwdm.dylib[0x20e14] <+84>:  bl     0x27b24                   ; symbol stub for: objc_retainAutoreleasedReturnValue
+kwdm.dylib[0x20e18] <+88>:  ldur   x8, [x29, #-0x8]
+kwdm.dylib[0x20e1c] <+92>:  adrp   x9, 28
+kwdm.dylib[0x20e20] <+96>:  ldr    x9, [x9, #0xc8]
+kwdm.dylib[0x20e24] <+100>: ldr    x9, [x9]
+kwdm.dylib[0x20e28] <+104>: cmp    x9, x8
+kwdm.dylib[0x20e2c] <+108>: b.ne   0x20e3c                   ; <+124>
+kwdm.dylib[0x20e30] <+112>: ldp    x29, x30, [sp, #0x50]
+kwdm.dylib[0x20e34] <+116>: add    sp, sp, #0x60
+kwdm.dylib[0x20e38] <+120>: b      0x27a94                   ; symbol stub for: objc_autoreleaseReturnValue
+kwdm.dylib[0x20e3c] <+124>: bl     0x279e0                   ; symbol stub for: __stack_chk_fail
+(lldb) disassemble -n "+[TimeUtils now]"
+kwdm.dylib`+[TimeUtils now]:
+kwdm.dylib[0x16418] <+0>:  stp    x29, x30, [sp, #-0x10]!
+kwdm.dylib[0x1641c] <+4>:  mov    x29, sp
+kwdm.dylib[0x16420] <+8>:  bl     0x27908                   ; symbol stub for: CACurrentMediaTime
+kwdm.dylib[0x16424] <+12>: adrp   x8, 23
+kwdm.dylib[0x16428] <+16>: ldr    d1, [x8, #0xc70]
+kwdm.dylib[0x1642c] <+20>: fmul   d0, d0, d1
+kwdm.dylib[0x16430] <+24>: ldp    x29, x30, [sp], #0x10
+kwdm.dylib[0x16434] <+28>: ret    
+(lldb) memory read --format float --size 8 --count 1 0x2dc70
+0x0002dc70: 1000
+(lldb) quit

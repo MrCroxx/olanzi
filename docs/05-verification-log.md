@@ -4,7 +4,7 @@
 > An archive of all measured data, **including the failed attempts**.
 > Conclusions are in [02-vibekey-protocol.md](02-vibekey-protocol.md); the process is in [04-methodology.md](04-methodology.md).
 
-> 📚 Docs set: [README](../README.md) · [01 Scope](01-ulanzi-studio-scope.md) · [02 Protocol](02-vibekey-protocol.md) · [03 Tool Manual](03-tool-manual.md) · [04 Methodology](04-methodology.md) · **05 Verification Log**
+> 📚 Docs set: [README](../README.md) · [01 Scope](01-ulanzi-studio-scope.md) · [02 Protocol](02-vibekey-protocol.md) · [03 Tool Manual](03-tool-manual.md) · [04 Methodology](04-methodology.md) · **05 Verification Log** · [10 Input Runtime](10-input-runtime.md)
 
 ---
 
@@ -330,3 +330,23 @@ When genuinely offline, `06 03 0a 11` still comes back but its status is `00`; a
 | 62 MB decoded log | `~/ulanzi-re/raw/logs_decoded.txt` |
 | Command table | `~/ulanzi-re/raw/kwdm_message_builders.txt` |
 | kwdm disassembly | `~/ulanzi-re/raw/kwdm_arm64_disasm.txt` |
+
+---
+
+## 8. Heartbeat Investigation (2026-09-21)
+
+[CONFIRMED] A vendor-interface-only test measured 60.005 seconds with no requests, followed by 60.005 seconds with 30 Hooks queries at two-second intervals. Both windows ended with `06 03 0a 11 01 00 00 00`, no notifications, and no callback errors. No configuration writes were sent.
+
+[CONFIRMED] LLDB identified a separate Studio heartbeat: `06 01 23 00 01` plus 59 zero bytes, sent approximately once per second. The old `--poll` command reads Hooks mode and does not send that frame. A later attempt to test the Studio heartbeat found `06 03 0a 11 00 00 00 00` at baseline and was aborted before sending heartbeats. A preceding six-control read was incomplete, so the checker now validates online state first.
+
+[CONFIRMED] A retry after the user reported physical wake still returned offline. A separate diagnostic submitted 10 official heartbeat frames successfully, interleaving status queries at approximately two-second intervals; all statuses stayed offline and six-key reads remained incomplete. No notifications or callback errors occurred. This was not an online-start, one-second heartbeat comparison.
+
+[INFERRED] The later offline state may be sleep, but its onset and cause were not measured. The dedicated-heartbeat window and key-configuration before/after comparison were incomplete in those attempts. User activity, power conditions, and longer idle periods were not controlled. These measurements do not prove a sleep-prevention effect, nor can wireless online status prove that indicator lights stay awake.
+
+[CONFIRMED] After wireless connectivity was restored, the real workspace read all six controls, wrote key 1 from `0x01` to F13 (`0x68`) with acknowledgment and matching device readback, and restored it to `0x01`. All six final configurations matched the original snapshot. The [round-trip evidence](evidence/2026-09-21-workspace-roundtrip.log) verifies the configuration write through readback, not physical key events.
+
+[CONFIRMED] The running local service was then observed through HTTP for **90.019 seconds**, with 91 samples at roughly one-second intervals. Every sample reported `online=true` and `connected=true`, Studio heartbeat enabled with a one-second interval, and no error. The observed `lastSent` timestamp advanced between 86 adjacent sample pairs; its maximum age at sampling was 1.001 seconds. Sampling and heartbeat scheduling are independent, so adjacent equal timestamps do not imply a missed heartbeat. All six controls were read through `POST /api/refresh` before and after the window and were unchanged. The service remained running. See the [90-second observation log](evidence/2026-09-21-workspace-heartbeat90.log).
+
+This is a successful short operational check, not an isolated sleep-prevention experiment: the service also queried online status every two seconds, and the before/after key reads may affect wake state. HTTP state reads only observed the running service; no second HID client or configuration write was used during this window. Longer-term sleep causality and physical key events remain unverified.
+
+See [07 Heartbeat Investigation](07-heartbeat-investigation.md), the [comparison log](evidence/2026-09-21-keepalive-comparison.log), and the [original disassembly](evidence/2026-09-21-studio-heartbeat-disassembly.log). Missing reports must never be treated as proof of shutdown; use the raw status byte.

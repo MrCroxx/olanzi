@@ -1,19 +1,23 @@
-# olanzi · Ulanzi Vibe Key 逆向与开源客户端
+# olanzi · 轻量 Ulanzi 设备工作台
 
 > 🌐 [English](README.md)
 
-> 把 Ulanzi Vibe Key（AU05）从 Ulanzi Studio 里解放出来。
-> **纯 Python 标准库 + 系统 IOKit，不依赖 Studio、不依赖任何第三方包。**
+> 📚 文档集：[01 职责边界](docs/01-ulanzi-studio-scope.zh.md) · [02 协议](docs/02-vibekey-protocol.zh.md) · [03 工具手册](docs/03-tool-manual.zh.md) · [04 方法论](docs/04-methodology.zh.md) · [05 验证记录](docs/05-verification-log.zh.md) · [06 工作台](docs/06-local-workspace.zh.md) · [07 心跳](docs/07-heartbeat-investigation.zh.md) · [08 Mac Fn](docs/08-mac-fn.zh.md) · [09 原生 macOS](docs/09-native-macos.zh.md) · [10 输入运行时](docs/10-input-runtime.zh.md)
+
+> 面向 Ulanzi 设备的轻量 Studio 替代客户端：从 Vibe Key（AU05）键位配置开始。
+> **SwiftUI + AppKit 原生菜单栏 App，直接使用 IOKit / CoreGraphics；主应用无需 Python、浏览器或 HTTP 服务。**
 
 ---
 
 ## 一句话
 
+Olanzi 是一个可扩展的原生 macOS 设备工作台，用轻量菜单栏 App 承接 Studio 的设备管理定位。首期提供 VIA 风格的可视化键位配置、后台心跳和 Fn 键位支持；后续按协议验证结果扩展其他设备能力。Python 网页原型与逆向工具保留作研究参考。
+
 Ulanzi Vibe Key 是一个 USB 复合 HID 设备。Ulanzi Studio 把它包了一层私有协议，
 让它看起来"必须装 Studio 才能用"。我们把那层协议拆掉了：
 
 ```
-✅ 读按键      标准 HID 键盘报文，零成本
+✅ 读按键      直出模式用标准 HID；Studio 心跳模式改走厂商事件
 ✅ 改按键      私有通道 01 06 50 04，设备端持久化，已实测生效
 ✅ 读设备状态   固件 / 电量 / 降噪 / 指示灯 / SN / UUID
 ✅ 解密私有协议  TEA-ECB，密钥与算法全部解出，85 条命令表
@@ -22,6 +26,34 @@ Ulanzi Vibe Key 是一个 USB 复合 HID 设备。Ulanzi Studio 把它包了一�
 ---
 
 ## 快速上手
+
+### 原生 macOS App
+
+要求 macOS 14 或更新版本，以及 Swift 6 工具链（源码使用 Swift 5 语言模式）。从仓库根目录构建并打开：
+
+```bash
+make dev
+```
+
+`make release` 会编译、签名 Release 应用并生成 `build/Olanzi-<version>-<arch>.dmg`；`make dmg` 是同一流程的别名。打开 DMG，将 Olanzi 拖入 Applications 即可安装。磁盘映像沿用 App 的签名证书；本地签名不等于 Apple 公证。
+
+`make dev` 通过现有打包脚本编译并打开 Debug 版本，输出 `build/Olanzi.app`。主应用使用完整 SwiftUI 键位界面和 AppKit 菜单栏，不需要运行 Python、浏览器或本地 HTTP 服务。关闭官方 Studio 及占用设备的旧工具后，插入接收器并打开 Vibe Key，再在 App 中选择控件、修改键码并应用。
+
+支持三个按键，以及旋钮按下、右拧、左拧，共六个动作。每个可按压控件支持主要动作及可选双击、长按动作，旋转按格立即执行。日常编辑原子保存本机映射，不再改写设备键码；宏、多媒体和灯效不在此次实现范围内。关闭窗口后，菜单栏 App 继续维护设备连接、心跳与按本机已保存映射执行的按键转发；从菜单退出 App 才停止。当前不安装登录项或开机服务。
+
+```bash
+# 隔离演示，不访问真实硬件
+swift run --package-path native Olanzi --demo
+
+# 原生核心测试
+swift test --package-path native
+```
+
+Studio 心跳会把按键切换到厂商事件路径，因此普通键与 Fn 都需要 App 依据本机已保存映射进行主机转发，并为 **Olanzi App** 授予输入监控与辅助功能权限。在修饰键类别选择 **Fn** 并应用即可分配 Fn，无需额外开关；草稿不影响转发。Fn 对应设备键码 `0x01`，出厂顶部键也使用它。保持 App 路径和签名证书稳定，签名身份变更可能需要重新授权。前一版厂商转发已实测 Enter 与豆包 Fn，新运行时架构、迁移、手势规则与检查见 [10 · Daemon 输入运行时](docs/10-input-runtime.zh.md)。
+
+构建、菜单栏生命周期、权限与验证边界见 **[09 · 原生 macOS App](docs/09-native-macos.zh.md)**。旧 Python/浏览器原型和 daemon 说明保留在 [06 · 旧本地工作台原型](docs/06-local-workspace.zh.md)，不再是主应用入口；Fn 的底层原理见 [08 · Mac Fn](docs/08-mac-fn.zh.md)。
+
+### 原有终端工具
 
 ```bash
 cd olanzi
@@ -47,7 +79,7 @@ python3 vibekey.py --set-key 0=F13
 > ⚠️ **按键会真的注入你的焦点窗口**（键 2 打 `Enter`、键 3 打 `Esc`、旋钮打方向键/退格）。
 > 程序默认关闭终端回显，让输出保持干净；加 `--echo` 可以恢复看到按键字符。
 
-### 前置条件：输入监控权限
+### 终端按键监控的前置条件：输入监控权限
 
 macOS 需要 **输入监控** 权限才能读键盘接口。
 
@@ -72,7 +104,7 @@ macOS 需要 **输入监控** 权限才能读键盘接口。
 
 | 控件 | HID 键码 | 含义 |
 |---|---|---|
-| 键 1（上） | `0x01` | ErrorRollOver —— **无效码，系统直接忽略** |
+| 键 1（上） | `0x01` | ErrorRollOver —— **系统原生忽略**；原生 App 按确认映射自动将其作为 Fn 触发码 |
 | 键 2（中） | `0x28` | Enter |
 | 键 3（下） | `0x29` | Esc |
 | 旋钮 → 右拧 | `0x4F` | RightArrow |
@@ -82,7 +114,7 @@ macOS 需要 **输入监控** 权限才能读键盘接口。
 
 > **键 1 是"残废"的** —— 它发的是无效码，脱离 Studio 等于没有。
 > 这不是 bug，是设计：键 1 就是 AI 对话键，被绑死在自家软件上。
-> **现在你可以改它**，见下文。
+> **现在你可以改它**，也可以保留该键码，由原生 App 在获得权限后自动转换为 Fn。厂商事件按物理控件索引查映射，不再使用旧标准 HID 原型的同码识别方式。
 
 ---
 
@@ -90,7 +122,7 @@ macOS 需要 **输入监控** 权限才能读键盘接口。
 
 | 归设备/系统管 | 归 Ulanzi Studio 管 |
 |---|---|
-| ✅ 按键输入（标准 HID，直接注入 OS） | ⬜ 指示灯效果（AI 状态 → 灯效） |
+| ✅ 无 Studio 心跳时的标准 HID 直出；心跳模式由主机转发 | ⬜ 指示灯效果（AI 状态 → 灯效） |
 | ✅ 按键表（我们现在能读写） | ⬜ 固件 OTA |
 | ✅ 多媒体键 / 鼠标 | ⬜ 插件生态、云市场 |
 | | ⬜ profile 管理、多设备编排 |
@@ -108,12 +140,17 @@ macOS 需要 **输入监控** 权限才能读键盘接口。
 | **[03 · 工具手册](docs/03-tool-manual.zh.md)** | `vibekey.py` 全部参数、输出解读、故障排查 |
 | **[04 · 逆向方法论](docs/04-methodology.zh.md)** | 怎么逆出来的：可复现的步骤、关键突破点、踩过的坑 |
 | **[05 · 验证记录](docs/05-verification-log.zh.md)** | 所有实测数据留档（含失败尝试） |
+| **[06 · 旧本地工作台原型](docs/06-local-workspace.zh.md)** | 保留的 Python/浏览器原型、配置文件与 daemon 说明 |
+| **[07 · 心跳调查](docs/07-heartbeat-investigation.zh.md)** | 官方心跳命令、在线状态与防休眠验证 |
+| **[08 · Mac Fn](docs/08-mac-fn.zh.md)** | Fn 原理、旧 Python 原型记录与验证边界 |
+| **[09 · 原生 macOS App](docs/09-native-macos.zh.md)** | 当前主入口：Swift 构建、菜单栏、权限与验证边界 |
+| **[10 · 输入运行时](docs/10-input-runtime.zh.md)** | 本机动作、双击长按、持久化与迁移 |
 
 > **英文是默认入口**：文档文件名不带语言后缀。中文版加 `.zh.md`。两版结构严格对应，改一边必须同步另一边。
 
 ---
 
-## 数据流
+## 原有逆向工具的数据流
 
 ```
                     ┌──────────────────────────────────┐
@@ -147,8 +184,7 @@ macOS 需要 **输入监控** 权限才能读键盘接口。
                     ↑ 完全绕开 Ulanzi Studio
 ```
 
-> **注意**：Studio 退出后，厂商通道上**只有心跳**，没有任何 `deviceKeyEvent`。
-> 按键在标准 HID 上照常工作 —— 所以读按键根本不用碰私有协议。
+> **范围更新**：上图与早期标准 HID 抓包描述未发送 Studio 专用心跳的历史状态。2026-09-21 实测 Olanzi 心跳会让按键改走厂商 `8b 10` 事件，停止心跳后 Enter 直出恢复；普通键也需要主机转发。旧 Hooks 查询不等于心跳，防休眠因果关系仍须独立验证，见 [07 · 心跳调查](docs/07-heartbeat-investigation.zh.md)。
 
 ---
 
@@ -158,15 +194,26 @@ macOS 需要 **输入监控** 权限才能读键盘接口。
 olanzi/
 ├── AGENTS.md                    ← 项目 Memory（约定 / 技术不变量 / 安全规则）
 ├── README.md / README.zh.md     ← 你在这里（英 / 中）
-├── vibekey.py                   ← 终端工具（零依赖，1060 行）
+├── native/
+│   ├── Package.swift           ← macOS 14+，Swift 6 工具链 / Swift 5 语言模式
+│   ├── Sources/OlanziCore/     ← TEA、IOKit、CoreGraphics 与后台线程
+│   ├── Sources/OlanziApp/      ← SwiftUI 界面与 AppKit 菜单栏
+│   └── Tests/                  ← 原生核心测试
+├── vibekey.py                  ← 逆向终端工具（零第三方依赖）
+├── olanzi*.py / web/ / tests/   ← 保留的旧 Python / 浏览器原型与测试
 ├── tools/
-│   └── check_docs.py            ← 文档双语一致性校验
+│   ├── build-macos.sh          ← 构建 build/Olanzi.app
+│   └── check_docs.py           ← 文档双语一致性校验
 └── docs/
     ├── 01-ulanzi-studio-scope.md   (+ .zh.md)
     ├── 02-vibekey-protocol.md      (+ .zh.md)
     ├── 03-tool-manual.md           (+ .zh.md)
     ├── 04-methodology.md           (+ .zh.md)
     ├── 05-verification-log.md      (+ .zh.md)
+    ├── 06-local-workspace.md       (+ .zh.md)
+    ├── 07-heartbeat-investigation.md (+ .zh.md)
+    ├── 08-mac-fn.md                (+ .zh.md)
+    ├── 09-native-macos.md          (+ .zh.md)
     └── evidence/
         └── 2026-09-21-key-reprogram.log
 ```
@@ -180,8 +227,9 @@ olanzi/
 
 | 项 | 版本 |
 |---|---|
-| 系统 | macOS（Apple Silicon） |
-| Python | 3.x（仅标准库） |
+| 原生应用系统 | macOS 14 或更新版本 |
+| 原生工具链 | Swift 6（Swift 5 语言模式） |
+| 旧逆向工具 | Python 3.x（仅标准库，主应用不依赖它） |
 | 被测固件 | Ulanzi Studio **3.3.9** / Vibe Key 固件 **4.4.2** |
 | 验证日期 | 2026-09-21 |
 
@@ -195,8 +243,9 @@ olanzi/
 - [x] **第二期** —— 解出私有协议（TEA + 85 条命令 + 控件映射）
 - [x] **第三期** —— 读按键的终端工具（脱离 Studio 可用）
 - [x] **第四期** —— 读写设备的可编程按键表（**改键**）
-- [ ] **第五期** —— 驱动指示灯（AI 状态灯效）
-- [ ] **第六期** —— 替代客户端本体（按键 → 脚本 / Ollama / 窗口切换）
+- [x] **第五期** —— Python 本地工作台原型（保留作研究参考）
+- [x] **第六期** —— Swift 原生菜单栏 App（键位界面、后台心跳与 Fn 键位）
+- [ ] **后续** —— 按实测协议扩展指示灯、自动化及其他 Studio 能力
 - [ ] 待验证 —— 组合键（`num > 1`）、`类型=0x03`（系统/多媒体）
 
 ---

@@ -4,7 +4,7 @@
 > 所有实测数据的留档，**包括失败的尝试**。
 > 结论见 [02-vibekey-protocol.md](02-vibekey-protocol.zh.md)，过程见 [04-methodology.md](04-methodology.zh.md)。
 
-> 📚 文档集：[README](../README.zh.md) · [01 职责边界](01-ulanzi-studio-scope.zh.md) · [02 协议](02-vibekey-protocol.zh.md) · [03 工具手册](03-tool-manual.zh.md) · [04 逆向方法论](04-methodology.zh.md) · **05 验证记录**
+> 📚 文档集：[README](../README.zh.md) · [01 职责边界](01-ulanzi-studio-scope.zh.md) · [02 协议](02-vibekey-protocol.zh.md) · [03 工具手册](03-tool-manual.zh.md) · [04 逆向方法论](04-methodology.zh.md) · **05 验证记录** · [10 输入运行时](10-input-runtime.zh.md)
 
 ---
 
@@ -329,3 +329,23 @@ $ python3 vibekey.py --keys
 | 62 MB 解码日志 | `~/ulanzi-re/raw/logs_decoded.txt` |
 | 命令表 | `~/ulanzi-re/raw/kwdm_message_builders.txt` |
 | kwdm 反汇编 | `~/ulanzi-re/raw/kwdm_arm64_disasm.txt` |
+
+---
+
+## 8. 心跳调查（2026-09-21）
+
+[CONFIRMED] 只使用厂商接口，先测量 60.005 秒零请求空闲，再测量 60.005 秒内每两秒一次的 30 次 Hooks 查询。两个窗口结束均回复 `06 03 0a 11 01 00 00 00`，没有通知，也没有回调异常。未发送配置写入。
+
+[CONFIRMED] LLDB 找到 Studio 独立心跳：`06 01 23 00 01` 加 59 个零字节，约每秒发送一次。旧 `--poll` 读取 Hooks 模式，不发送该帧。稍后的 Studio 心跳测试尝试起始即得到 `06 03 0a 11 00 00 00 00`，在发送心跳前终止。此前六个控件的读取未完成，因此检查器已改为先验证在线状态。
+
+[CONFIRMED] 用户报告物理唤醒后重试仍返回离线。单独诊断成功提交 10 帧官方心跳，穿插在线查询、间隔约两秒；所有状态仍为离线，六键读取仍未完成。没有通知或回调异常。这不是在线起点、一秒间隔的心跳对照。
+
+[INFERRED] 稍后离线可能是休眠，但没有测量发生时刻与原因。在这些尝试中，专用心跳窗口及按键配置前后对照未完成。用户操作、供电条件与更长空闲时间未受控。这些测量不能证明防休眠效果，也不能根据无线在线状态证明指示灯保持清醒。
+
+[CONFIRMED] 无线连接恢复后，真实工作台读取全部六个控件，将键 1 从 `0x01` 写为 F13（`0x68`），收到确认且设备回读匹配，再恢复为 `0x01`。最终六个控件配置全部与原快照一致。[往返证据](evidence/2026-09-21-workspace-roundtrip.log)通过回读验证配置写入结果，不代表已验证物理按键事件。
+
+[CONFIRMED] 随后通过 HTTP 观察运行中的本地服务 **90.019 秒**，以约一秒间隔取得 91 个样本。每次均报告 `online=true`、`connected=true`，Studio 心跳开启、间隔一秒，且没有错误。观察到 `lastSent` 在 86 对相邻样本之间推进；采样时该时间戳距当前最多 1.001 秒。采样与心跳调度不同步，因此相邻时间戳相同不代表漏发心跳。窗口前后通过 `POST /api/refresh` 读取全部六个控件，配置完全一致。服务继续运行。见 [90 秒观测日志](evidence/2026-09-21-workspace-heartbeat90.log)。
+
+这是成功的短时运行验证，不是隔离变量的防休眠实验：服务同时每两秒查询在线状态，前后读取键位也可能影响清醒状态。HTTP 状态读取只是观察现有服务，窗口内没有另开 HID 客户端或写入配置。长期休眠因果关系与物理按键事件仍未验证。
+
+见 [07 心跳调查](07-heartbeat-investigation.zh.md)、[对照日志](evidence/2026-09-21-keepalive-comparison.log)和[原始反汇编](evidence/2026-09-21-studio-heartbeat-disassembly.log)。不要将缺少报文当作关机证据；应读取原始状态字节。

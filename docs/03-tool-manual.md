@@ -4,7 +4,7 @@
 > One file, zero third-party dependencies, talks to the hardware directly.
 > Source: [vibekey.py](../vibekey.py)
 
-> 📚 Docs set: [README](../README.md) · [01 Scope](01-ulanzi-studio-scope.md) · [02 Protocol](02-vibekey-protocol.md) · **03 Tool Manual** · [04 Methodology](04-methodology.md) · [05 Verification Log](05-verification-log.md)
+> 📚 Docs set: [README](../README.md) · [01 Scope](01-ulanzi-studio-scope.md) · [02 Protocol](02-vibekey-protocol.md) · **03 Tool Manual** · [04 Methodology](04-methodology.md) · [05 Verification Log](05-verification-log.md) · [10 Input Runtime](10-input-runtime.md)
 
 ---
 
@@ -53,10 +53,10 @@ python3 vibekey.py --probe --poll 2
 | Argument | Effect |
 |---|---|
 | `--probe` | Reads the device status once at startup (firmware/battery/noise reduction/SN…) |
-| `--poll 2` | Sends a keepalive query every 2 seconds to keep the device awake |
+| `--poll 2` | Reads Hooks mode every 2 seconds; sleep prevention is unverified |
 
-**Why is `--poll` needed?** The device is passive — no polling, no talk: not even a heartbeat.
-`--poll 2` is the most reliable interval.
+**What does `--poll` do?** It periodically reads Hooks mode. A dongle reply does not establish that the device body is awake.
+A 2-second interval works for this query; see [07 Heartbeat Investigation](07-heartbeat-investigation.md) for Studio's dedicated heartbeat and measurement limits.
 
 ### 2.2 Configuration mode
 
@@ -310,7 +310,7 @@ wire = bytes([0x55]) + ct[:63]    # 64 bytes (including the report ID)
 
 ### 7.3 The device is passive
 
-Without active polling the device **sends not a single report** (not even a heartbeat). So `--poll` is the key to keeping it awake.
+An idle 60-second measurement produced no notifications while the final online status still reported online. **Silence is not evidence of sleep.** Hooks polling and Studio's dedicated heartbeat are different; their long-term effect on sleep requires a controlled comparison.
 
 ### 7.4 Concurrent opens are safe
 

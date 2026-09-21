@@ -1,0 +1,48 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: Native app, protocols, docs and DMG
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Toolchain
+        run: swift --version
+      - name: Native runtime tests
+        run: make test
+      - name: Legacy protocol and workspace tests
+        run: |
+          python3 -m unittest discover -s tests
+          npm test
+      - name: Documentation and whitespace
+        run: |
+          make check-docs
+          git diff --check HEAD^ HEAD
+      - name: Build and verify app and DMG
+        env:
+          OLANZI_SIGNING_IDENTITY: '-'
+        run: make release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Olanzi-macOS-CI
+          path: build/Olanzi-*.dmg
+          if-no-files-found: error
+          retention-days: 7

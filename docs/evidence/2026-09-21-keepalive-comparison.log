@@ -1,0 +1,32 @@
+Read-only vendor-interface comparison. No configuration writes. No Ulanzi Studio process observed.
+Command: /usr/bin/python3 tools/check_keepalive.py --seconds 60 --interval 2
+{"event": "baseline", "replies": [{"status": 1, "plaintext_prefix": "06 03 0a 11 01 00 00 00"}]}
+{"event": "phase_start", "mode": "idle", "seconds": 60.0}
+{"event": "phase_end", "mode": "idle", "seconds": 60.005, "hooks_sent": 0, "hooks_replies": 0, "notifications": 0, "replies": [{"status": 1, "plaintext_prefix": "06 03 0a 11 01 00 00 00"}], "errors": []}
+{"event": "phase_start", "mode": "hooks_poll", "seconds": 60.0}
+{"event": "phase_end", "mode": "hooks_poll", "seconds": 60.005, "hooks_sent": 30, "hooks_replies": 30, "notifications": 0, "replies": [{"status": 1, "plaintext_prefix": "06 03 0a 11 01 00 00 00"}], "errors": []}
+{"event": "complete", "conclusion": "两个短时窗口均在线；不能据此证明或否定更长时间的休眠与保活因果关系", "errors": []}
+
+Later attempted Studio heartbeat window. Baseline status check aborted before any heartbeat because status=00.
+Command: /usr/bin/python3 tools/check_keepalive.py --mode studio --seconds 60 --skip-idle --check-keys
+{"time": "2026-09-21T06:59:04.203673+00:00", "event": "baseline", "replies": [{"status": 0, "plaintext_prefix": "06 03 0a 11 00 00 00 00"}]}
+{"time": "2026-09-21T06:59:04.204124+00:00", "event": "inconclusive", "reason": "起始状态非已确认在线，无法执行保持唤醒对照", "errors": []}
+
+User reported physical wake; baseline retry still returned status=00.
+{"time": "2026-09-21T07:03:10.379607+00:00", "event": "baseline", "replies": [{"status": 0, "plaintext_prefix": "06 03 0a 11 00 00 00 00"}]}
+{"time": "2026-09-21T07:03:10.380001+00:00", "event": "inconclusive", "reason": "起始状态非已确认在线，无法执行保持唤醒对照", "errors": []}
+
+Offline recovery diagnostic: send one confirmed Studio heartbeat, pump 1 second, query online status (1 second), repeat 10 times; then read 6 key configurations. This is not a 1-second sustained online-start heartbeat comparison. No configuration writes.
+{"time": "2026-09-21T07:03:52.376079+00:00", "event": "baseline", "replies": [{"status": 0, "plaintext_prefix": "06 03 0a 11 00 00 00 00"}]}
+{"time": "2026-09-21T07:03:54.389254+00:00", "event": "studio_probe", "sent": true, "ordinal": 1, "replies": [{"status": 0, "plaintext_prefix": "06 03 0a 11 00 00 00 00"}]}
+{"time": "2026-09-21T07:03:56.401134+00:00", "event": "studio_probe", "sent": true, "ordinal": 2, "replies": [{"status": 0, "plaintext_prefix": "06 03 0a 11 00 00 00 00"}]}
+{"time": "2026-09-21T07:03:58.414377+00:00", "event": "studio_probe", "sent": true, "ordinal": 3, "replies": [{"status": 0, "plaintext_prefix": "06 03 0a 11 00 00 00 00"}]}
+{"time": "2026-09-21T07:04:00.427059+00:00", "event": "studio_probe", "sent": true, "ordinal": 4, "replies": [{"status": 0, "plaintext_prefix": "06 03 0a 11 00 00 00 00"}]}
+{"time": "2026-09-21T07:04:02.441358+00:00", "event": "studio_probe", "sent": true, "ordinal": 5, "replies": [{"status": 0, "plaintext_prefix": "06 03 0a 11 00 00 00 00"}]}
+{"time": "2026-09-21T07:04:04.455753+00:00", "event": "studio_probe", "sent": true, "ordinal": 6, "replies": [{"status": 0, "plaintext_prefix": "06 03 0a 11 00 00 00 00"}]}
+{"time": "2026-09-21T07:04:06.469222+00:00", "event": "studio_probe", "sent": true, "ordinal": 7, "replies": [{"status": 0, "plaintext_prefix": "06 03 0a 11 00 00 00 00"}]}
+{"time": "2026-09-21T07:04:08.484162+00:00", "event": "studio_probe", "sent": true, "ordinal": 8, "replies": [{"status": 0, "plaintext_prefix": "06 03 0a 11 00 00 00 00"}]}
+{"time": "2026-09-21T07:04:10.496480+00:00", "event": "studio_probe", "sent": true, "ordinal": 9, "replies": [{"status": 0, "plaintext_prefix": "06 03 0a 11 00 00 00 00"}]}
+{"time": "2026-09-21T07:04:12.506754+00:00", "event": "studio_probe", "sent": true, "ordinal": 10, "replies": [{"status": 0, "plaintext_prefix": "06 03 0a 11 00 00 00 00"}]}
+{"time": "2026-09-21T07:04:15.949168+00:00", "event": "key_probe_error", "error": "未收齐六个控件配置，无法确认配置一致"}
+{"time": "2026-09-21T07:04:15.949311+00:00", "event": "end", "notifications": 0, "errors": []}

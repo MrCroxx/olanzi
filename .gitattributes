@@ -1,0 +1,2 @@
+# 原始终端证据保留输出中的空白，不对日志应用代码空白规则。
+docs/evidence/*.log -whitespace

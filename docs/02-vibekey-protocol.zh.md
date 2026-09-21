@@ -5,7 +5,7 @@
 > 第一期结论见 [01-ulanzi-studio-scope.md](01-ulanzi-studio-scope.zh.md)。
 > 本文记录**已实测跑通**的协议细节与工具。
 >
-> 📚 文档集：[README](../README.zh.md) · [01 职责边界](01-ulanzi-studio-scope.zh.md) · **02 协议** · [03 工具手册](03-tool-manual.zh.md) · [04 逆向方法论](04-methodology.zh.md) · [05 验证记录](05-verification-log.zh.md)
+> 📚 文档集：[README](../README.zh.md) · [01 职责边界](01-ulanzi-studio-scope.zh.md) · **02 协议** · [03 工具手册](03-tool-manual.zh.md) · [04 逆向方法论](04-methodology.zh.md) · [05 验证记录](05-verification-log.zh.md) · [10 输入运行时](10-input-runtime.zh.md)
 
 ---
 
@@ -127,6 +127,7 @@ frame[4..]      参数
 
 | 子类型 | 含义 |
 |---|---|
+| `0x10` | 按键事件：状态在 `frame[3]`，AU05 物理控件索引在 `frame[4]`；见 [07 §4](07-heartbeat-investigation.zh.md) |
 | `0x7B` | 心跳（`frame[2..7]` 是计数/状态） |
 | `0x0B` | 通知 B |
 | `0x0D` | 通知 D |
@@ -193,6 +194,14 @@ frame[4..]      参数
 真正要看的是回复里那个 `status` 字节。别把"有回复"当成"设备在线"。
 
 ---
+
+### Studio 专用心跳
+
+[CONFIRMED] `+[MessageHelper deviceHeartbeatMessage]` 构造 `06 01 23 00 01`，随后为 59 个零字节；Studio 后台 worker 约每秒发送一次。它与旧工具的 Hooks 查询 `01 0b 89 01` 不同。该心跳尚无已验证的应答约定，因此应依据上面的明确状态字节判断本体在线，而非心跳应答。
+
+[INFERRED] 缺失该心跳可能影响休眠，但实测 60 秒空闲与 Hooks 窗口结束均在线，长期防休眠效果仍未验证。反汇编与受控测试限制见 [07 心跳调查](07-heartbeat-investigation.zh.md)。
+
+[CONFIRMED] 2026-09-21 后续对照发现，持续发送此心跳会让普通键停止标准 HID 直出，按键改为 `8b 10` 厂商事件；保留厂商连接但停止心跳后 Enter 恢复。`frame[2]` 是逻辑动作号，不能作 HID 键码；`frame[3]` 是按下/松开，`frame[4]` 是 AU05 物理控件 index。主机应使用已确认设备键位转发普通键和 Fn，新转发已验证 Enter 与顶部 Fn 的系统效果；其余控件的全部系统动作仍待验证。
 
 ## 5. 控件映射（实测确认）
 
@@ -275,7 +284,7 @@ frame[4..]      参数
 | 3. 读回 index 0 | `[0x02, 0x68]` ✅ 已落盘 |
 | 4. **按"键 1"** | **设备真的发出 `0x68` = F13** ✅✅ |
 
-**结论：`类型=0x02` 时，第二个字节就是设备会上报的 HID 键码。改它即可改键。**
+**结论：`类型=0x02` 时，第二个字节存储该控件分配的 HID 键码。直出模式由设备上报；心跳/厂商事件模式由主机从已确认映射中查询。**
 
 ### 命令行
 
@@ -295,16 +304,16 @@ python3 vibekey.py --set-key 0=enter --set-key 2=0x04    # 一次改多个
 
 ---
 
-## 7. 数据流向（脱离 Studio 后）
+## 7. 数据流向与心跳模式
 
 ```
-按键  →  设备固件  →  ① 接口2 标准 HID 键盘报文（直接注入 OS，任何程序都能收）
-                   →  ② 接口3 厂商通道 deviceKeyEvent（仅 Studio 在跑时才有）
+未发送 Studio 专用心跳 → 标准 HID 直出（早期实测状态）
+持续发送 Studio 专用心跳 → 厂商按键事件 → 按物理 index 查已确认设备映射 → 主机转发
 ```
 
-**实测：Studio 退出后，按键时段内厂商通道只有心跳，没有任何 `deviceKeyEvent`。**
+**历史实测**：Studio 退出且替代程序未发送专用心跳时，按键时段内厂商通道没有 `deviceKeyEvent`。该观察不等于“只有官方 Studio 进程在跑才会有厂商按键事件”。
 
-> 也就是说：**读按键完全不需要碰私有协议**，任何程序都能像读普通键盘一样读它。
+[CONFIRMED] Olanzi 自行发送专用心跳时也观察到按键改走厂商通道，停止心跳后 Enter 直出恢复。直接读标准 HID 的早期方法仅适用于当时的直出状态；启用心跳的替代客户端还需要解释厂商事件并执行主机按键转发，见 [07 §4](07-heartbeat-investigation.zh.md)。
 
 ---
 
@@ -320,7 +329,7 @@ python3 vibekey.py --probe --poll 2
 | 参数 | 作用 |
 |---|---|
 | `--probe` | 启动时读一遍设备状态 |
-| `--poll 2` | 每 2 秒保活，保持设备唤醒 |
+| `--poll 2` | 每 2 秒读取 Hooks 模式；防休眠效果未验证 |
 | `--learn` | 打印每帧原始密文/明文 |
 | `--raw` | 心跳也全打出来 |
 | `--descriptor` | dump HID 报文描述符 |
@@ -355,7 +364,7 @@ python3 vibekey.py --probe --poll 2
 3. **按键会真的打进焦点窗口** —— 键 2 打 `Enter`、键 3 打 `Esc`、旋钮打方向键/退格。
    → 默认 `stty -echo`，否则屏幕会被冲乱。
 
-4. **设备是被动的** —— 不轮询就不说话（连心跳都没有）。`--poll` 保活。
+4. **没有报文不代表休眠** —— `--poll` 读取 Hooks 模式，与 Studio 专用心跳不同，防休眠效果未验证。见 [07 心跳调查](07-heartbeat-investigation.zh.md)。
 
 5. **两个实例可以同时打开**（都是 `kIOHIDOptionsTypeNone`，非独占），不会互相打架。
 

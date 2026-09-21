@@ -5,7 +5,7 @@
 > For the Phase 1 conclusions, see [01-ulanzi-studio-scope.md](01-ulanzi-studio-scope.md).
 > This document records the protocol details and the tool that have been **measured working end to end**.
 >
-> 📚 Docs set: [README](../README.md) · [01 Scope](01-ulanzi-studio-scope.md) · **02 Protocol** · [03 Tool Manual](03-tool-manual.md) · [04 Methodology](04-methodology.md) · [05 Verification Log](05-verification-log.md)
+> 📚 Docs set: [README](../README.md) · [01 Scope](01-ulanzi-studio-scope.md) · **02 Protocol** · [03 Tool Manual](03-tool-manual.md) · [04 Methodology](04-methodology.md) · [05 Verification Log](05-verification-log.md) · [10 Input Runtime](10-input-runtime.md)
 
 ---
 
@@ -127,6 +127,7 @@ Request `01 0b 89 01` → reply `81 0b 89 11`.
 
 | Subtype | Meaning |
 |---|---|
+| `0x10` | Key event: state in `frame[3]`, AU05 physical control index in `frame[4]`; see [07 §4](07-heartbeat-investigation.md) |
 | `0x7B` | heartbeat (`frame[2..7]` is counter/status) |
 | `0x0B` | notice B |
 | `0x0D` | notice D |
@@ -193,6 +194,14 @@ and both are `0x06` (`device online status`, `dongle version`).
 what matters is the `status` byte inside it. Don't mistake "there was a reply" for "the device is online".
 
 ---
+
+### Studio's Dedicated Heartbeat
+
+[CONFIRMED] `+[MessageHelper deviceHeartbeatMessage]` constructs `06 01 23 00 01` followed by 59 zero bytes; Studio's background worker sends it about once per second. This differs from the old tool's Hooks query `01 0b 89 01`. The heartbeat has no verified response contract, so determine body online state from the explicit status byte above, not from heartbeat acknowledgments.
+
+[INFERRED] Missing this heartbeat may contribute to sleep, but the measured 60-second idle and Hooks windows both ended online; prevention of longer-term sleep remains unverified. See [07 Heartbeat Investigation](07-heartbeat-investigation.md) for the disassembly and controlled-test limits.
+
+[CONFIRMED] A later comparison on 2026-09-21 found that sustained heartbeats stop direct standard HID ordinary-key output and produce `8b 10` vendor events; stopping the heartbeat while retaining the vendor connection restored Enter. `frame[2]` is a logical action number, not a HID keycode; `frame[3]` is press/release state and `frame[4]` is the AU05 physical control index. The host should forward ordinary keys and Fn using confirmed device bindings; the new forwarding path has verified Enter and top-key Fn system effects, while full OS-action coverage of the remaining controls is still pending.
 
 ## 5. Control Mapping (confirmed by measurement)
 
@@ -274,7 +283,7 @@ Away from Studio, **key 1 may as well not exist**.
 | 3. Read back index 0 | `[0x02, 0x68]` ✅ persisted |
 | 4. **Press "key 1"** | **the device really emits `0x68` = F13** ✅✅ |
 
-**Conclusion: when `type=0x02`, the second byte is the HID key code the device will report. Change it and you change the key.**
+**Conclusion: when `type=0x02`, the second byte stores the HID keycode assigned to that control. In direct-output mode the device reports it; in heartbeat/vendor-event mode the host must look it up from the confirmed binding.**
 
 ### Command Line
 
@@ -294,16 +303,16 @@ Key codes are accepted in three forms: `0x68` / `104` / `F13` (names such as `en
 
 ---
 
-## 7. Data Flow (after leaving Studio)
+## 7. Data Flow and Heartbeat Mode
 
 ```
-key   →  device firmware  →  ① interface 2 standard HID keyboard report (injected directly into the OS, any program can receive it)
-                          →  ② interface 3 vendor channel deviceKeyEvent (present only while Studio is running)
+No Studio dedicated heartbeat → direct standard HID (historically measured state)
+Sustained Studio dedicated heartbeat → vendor key event → physical index into confirmed device bindings → host forwarding
 ```
 
-**Measured: after Studio exits, during key presses the vendor channel carries only heartbeats and no `deviceKeyEvent` at all.**
+**Historical measurement**: after Studio exited and before the replacement sent the dedicated heartbeat, the vendor channel showed no `deviceKeyEvent` during key presses. This does not establish that vendor key events require the official Studio process to be running.
 
-> In other words: **reading key presses requires touching the proprietary protocol not at all** — any program can read them just like an ordinary keyboard.
+[CONFIRMED] Sending the dedicated heartbeat from Olanzi also moved keys to the vendor channel, and stopping it restored direct Enter output. The early standard-HID reading method applies only to that direct-output state. A replacement client using the heartbeat must also interpret vendor events and forward keys on the host; see [07 §4](07-heartbeat-investigation.md).
 
 ---
 
@@ -319,7 +328,7 @@ python3 vibekey.py --probe --poll 2
 | Option | Effect |
 |---|---|
 | `--probe` | read device state once at startup |
-| `--poll 2` | keepalive every 2 seconds, keeping the device awake |
+| `--poll 2` | read Hooks mode every 2 seconds; sleep prevention is unverified |
 | `--learn` | print the raw ciphertext/plaintext of every frame |
 | `--raw` | print heartbeats too |
 | `--descriptor` | dump the HID report descriptor |
@@ -354,7 +363,7 @@ Example output:
 3. **Key presses really do land in the focused window** — key 2 types `Enter`, key 3 types `Esc`, the knob types arrow keys/backspace.
    → `stty -echo` by default, otherwise the screen gets scrambled.
 
-4. **The device is passive** — it says nothing unless polled (not even a heartbeat). `--poll` keeps it alive.
+4. **Silence does not establish sleep** — `--poll` reads Hooks mode; it is not Studio's dedicated heartbeat and its ability to prevent sleep is unverified. See [07 Heartbeat Investigation](07-heartbeat-investigation.md).
 
 5. **Two instances can open it at the same time** (both `kIOHIDOptionsTypeNone`, non-exclusive) without fighting each other.
 

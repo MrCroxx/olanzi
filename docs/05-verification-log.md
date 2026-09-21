@@ -1,60 +1,60 @@
-# 05 · 验证记录
-> 🌐 [English](05-verification-log.en.md)
+# 05 · Verification Log
+> 🌐 [中文](05-verification-log.zh.md)
 
-> 所有实测数据的留档，**包括失败的尝试**。
-> 结论见 [02-vibekey-protocol.md](02-vibekey-protocol.md)，过程见 [04-methodology.md](04-methodology.md)。
+> An archive of all measured data, **including the failed attempts**.
+> Conclusions are in [02-vibekey-protocol.md](02-vibekey-protocol.md); the process is in [04-methodology.md](04-methodology.md).
 
-> 📚 文档集：[README](../README.md) · [01 职责边界](01-ulanzi-studio-scope.md) · [02 协议](02-vibekey-protocol.md) · [03 工具手册](03-tool-manual.md) · [04 逆向方法论](04-methodology.md) · **05 验证记录**
+> 📚 Docs set: [README](../README.md) · [01 Scope](01-ulanzi-studio-scope.md) · [02 Protocol](02-vibekey-protocol.md) · [03 Tool Manual](03-tool-manual.md) · [04 Methodology](04-methodology.md) · **05 Verification Log**
 
 ---
 
-## 验证环境
+## Verification Environment
 
-| 项 | 值 |
+| Item | Value |
 |---|---|
-| 日期 | 2026-09-21 |
-| 系统 | macOS（Apple Silicon） |
+| Date | 2026-09-21 |
+| OS | macOS (Apple Silicon) |
 | Ulanzi Studio | 3.3.9 |
-| Vibe Key 固件 | 4.4.2 |
-| 设备序列号 | `202606031150` |
-| 工具 | `vibekey.py`（本项目） |
+| Vibe Key firmware | 4.4.2 |
+| Device serial number | `202606031150` |
+| Tool | `vibekey.py` (this project) |
 
-> 全部验证都在 **Ulanzi Studio 已退出** 的状态下进行（除特别标注）。
+> All verification was performed with **Ulanzi Studio exited** (unless noted otherwise).
 
 ---
 
-## 1. 设备身份读取
+## 1. Device Identity Readout
 
-**命令**：`python3 vibekey.py --probe -t 3`
+**Command**: `python3 vibekey.py --probe -t 3`
 
-| 查询帧 | 设备回复（解密后） | 解读 |
+| Query frame | Device reply (after decryption) | Interpretation |
 |---|---|---|
-| `06 03 0a 01` | `01` | 设备在线 |
-| `01 04 0b 01` | ⟨16 字节，已脱敏⟩ | flashId，前 7 字节 ASCII = `AP53002`（型号前缀） |
-| `01 01 0b 01` | `0a 00` + ⟨14 字节，已脱敏⟩ + `07 01` + ⟨8 字节，已脱敏⟩ | SN = **`<REDACTED>`**（分两包） |
-| `01 04 04 01` | `41 00 00 28 28 01 04 04 02 26 08 13 20 30` | 固件 **4.4.2** |
+| `06 03 0a 01` | `01` | Device online |
+| `01 04 0b 01` | ⟨16 bytes, redacted⟩ | flashId, first 7 bytes ASCII = `AP53002` (a model prefix) |
+| `01 01 0b 01` | `0a 00` + ⟨14 bytes, redacted⟩ + `07 01` + ⟨8 bytes, redacted⟩ | SN = **`<REDACTED>`** (in two packets) |
+| `01 04 04 01` | `41 00 00 28 28 01 04 04 02 26 08 13 20 30` | Firmware **4.4.2** |
 | `06 02 03 01` | `41 00 00 16 28 00 04 04 02 26 08 13 20 30` | dongle **4.4.2** |
 | `01 01 02 01` | `dd 0d 1e 00 f1 01` | `0x0ddd` = 3549 mV |
-| `01 01 90 01` | `00 64 00 64` | 双麦降噪：各 `低=0 高=100` |
-| `01 0b 88 01` | `00 00 02 07 02 \| 0a 02 07 02 02 \| 0a 02 07 02 01 \| 0a 02 07 02 00` | 指示灯参数（疑似 3 组 + 头） |
-| `01 06 31 01` | 全 0 | 全部按键功能（未配置） |
-| `01 06 21 01` | 全 0 | AI 按钮功能（未配置） |
-| `01 06 40 01` | 全 0 | 马达强度（未配置） |
-| `01 01 34 01` | 全 0 | 旋钮开关（未配置） |
-| `01 0b 89 01` | 全 0 | Hooks 模式（关） |
-| `01 01 41 01` | 全 0 | 硬件版本（未配置） |
+| `01 01 90 01` | `00 64 00 64` | Dual-mic noise reduction: each `low=0 high=100` |
+| `01 0b 88 01` | `00 00 02 07 02 \| 0a 02 07 02 02 \| 0a 02 07 02 01 \| 0a 02 07 02 00` | Indicator light parameters (apparently 3 groups + header) |
+| `01 06 31 01` | all zeros | All key functions (not configured) |
+| `01 06 21 01` | all zeros | AI button function (not configured) |
+| `01 06 40 01` | all zeros | Motor strength (not configured) |
+| `01 01 34 01` | all zeros | Knob switch (not configured) |
+| `01 0b 89 01` | all zeros | Hooks mode (off) |
+| `01 01 41 01` | all zeros | Hardware version (not configured) |
 
-**结论**：设备在**完全没有 Studio** 的情况下可以正常应答。 ✅
+**Conclusion**: The device answers normally with **no Studio at all**. ✅
 
 ---
 
-## 2. 按键映射实验
+## 2. Key Mapping Experiments
 
-### 实验 1 —— 自由按压（13:27，失败但产生了发现）
+### Experiment 1 — Free Pressing (13:27, failed but produced a discovery)
 
-用户自由操作约 40 秒，捕获 47 次按下：
+The user operated freely for about 40 seconds, and 47 presses were captured:
 
-| keycode | 次数 | 时段 |
+| keycode | Count | Time range |
 |---|---|---|
 | `0x2A` Backspace | 10 | 13:27:22.664 – 25.569 |
 | `0x46` PrintScreen | 4 | 13:27:25.976 – 29.175 |
@@ -62,12 +62,12 @@
 | `0x28` Enter | 10 | 13:27:31.394 – 37.319 |
 | `0x29` Esc | 11 | 13:27:32.224 – 38.088 |
 
-**结果**：无法建立映射（无标注）。
-**但发现了时长规律** —— `0x2A` 全部 4–7 ms，其余全部 64–205 ms。
+**Result**: No mapping could be established (no annotations).
+**But a duration pattern surfaced** — every `0x2A` was 4–7 ms, and everything else was 64–205 ms.
 
-### 实验 2 —— 自由按压（13:28）
+### Experiment 2 — Free Pressing (13:28)
 
-| 时间 | 事件 | 时长 |
+| Time | Event | Duration |
 |---|---|---|
 | 13:28:27.836 | `0x46` | 129 ms |
 | 13:28:29.480 | `0x46` | 174 ms |
@@ -75,34 +75,34 @@
 | 13:28:31.959 | `0x01` | **1855 ms** |
 | 13:28:34.080 – 34.845 | `0x01` ×6 | 80–139 ms |
 
-**结果**：仍无法定映射。但 `0x01` 出现 1855 ms 长按，说明它**确实是一个控件**。
+**Result**: Still no mapping. But the 1855 ms long press of `0x01` shows that it **really is a control**.
 
-### 实验 3 —— 受控顺序（13:29）✅ **成功**
+### Experiment 3 — Controlled Sequence (13:29) ✅ **Success**
 
-**操作序列**（每步间隔 3 秒）：
-> 按下旋钮 → 键1 → 键2 → 键3 → 右拧×3 → 左拧×3 → 长按旋钮
+**Action sequence** (3-second gap between steps):
+> Knob press → Key 1 → Key 2 → Key 3 → twist right ×3 → twist left ×3 → long-press knob
 
-**捕获结果**：
+**Captured result**:
 
-| 时间 | 事件 | 时长 | 对应动作 |
+| Time | Event | Duration | Corresponding action |
 |---|---|---|---|
-| 13:29:20.180 | `0x46` PrintScreen | 300 ms | ① 按下旋钮 |
-| 13:29:21.095 | `0x01` ErrorRollOver | 320 ms | ② 键 1 |
-| 13:29:21.980 | `0x28` Enter | 400 ms | ③ 键 2 |
-| 13:29:22.760 | `0x29` Esc | 260 ms | ④ 键 3 |
-| 13:29:26.079 | `0x4F` RightArrow | 4 ms | ⑤ 右拧 #1 |
-| 13:29:26.444 | `0x4F` RightArrow | 5 ms | ⑤ 右拧 #2 |
-| 13:29:26.985 | `0x4F` RightArrow | 6 ms | ⑤ 右拧 #3 |
-| 13:29:29.414 | `0x2A` Backspace | 4 ms | ⑥ 左拧 #1 |
-| 13:29:29.831 | `0x2A` Backspace | 0 ms | ⑥ 左拧 #2 |
-| 13:29:30.215 | `0x2A` Backspace | 10 ms | ⑥ 左拧 #3 |
-| 13:29:34.459 | `0x46` PrintScreen | **1220 ms** | ⑦ 长按旋钮 |
+| 13:29:20.180 | `0x46` PrintScreen | 300 ms | ① Knob press |
+| 13:29:21.095 | `0x01` ErrorRollOver | 320 ms | ② Key 1 |
+| 13:29:21.980 | `0x28` Enter | 400 ms | ③ Key 2 |
+| 13:29:22.760 | `0x29` Esc | 260 ms | ④ Key 3 |
+| 13:29:26.079 | `0x4F` RightArrow | 4 ms | ⑤ Twist right #1 |
+| 13:29:26.444 | `0x4F` RightArrow | 5 ms | ⑤ Twist right #2 |
+| 13:29:26.985 | `0x4F` RightArrow | 6 ms | ⑤ Twist right #3 |
+| 13:29:29.414 | `0x2A` Backspace | 4 ms | ⑥ Twist left #1 |
+| 13:29:29.831 | `0x2A` Backspace | 0 ms | ⑥ Twist left #2 |
+| 13:29:30.215 | `0x2A` Backspace | 10 ms | ⑥ Twist left #3 |
+| 13:29:34.459 | `0x46` PrintScreen | **1220 ms** | ⑦ Long-press knob |
 
-**7 个动作 ↔ 7 组事件，顺序、数量、类别全部吻合。** ✅
+**7 actions ↔ 7 event groups; order, count and category all line up.** ✅
 
-### 实验 4 —— 独立复核（13:36）
+### Experiment 4 — Independent Re-check (13:36)
 
-用户按自己的习惯再操作一次：
+The user operated once more in their own habitual way:
 
 ```
 13:36:28.960 按键   ⌨ 旋钮 按下    PrintScreen    178 ms
@@ -113,11 +113,11 @@
 13:36:36.908 按键   ⌨ 键 3 (下)    Esc             90 ms
 ```
 
-**与实验 3 完全一致。** 映射确认。
+**Identical to Experiment 3.** Mapping confirmed.
 
-### 交叉验证：设备端配置表
+### Cross-validation: On-device Configuration Table
 
-从设备读出的官方配置（见 §3）与实验推出的映射**逐字节吻合**：
+The official configuration read from the device (see §3) matches the mapping derived from the experiments **byte for byte**:
 
 ```
 index 0..5 →  01  28  29  46  4f  2a
@@ -126,11 +126,11 @@ index 0..5 →  01  28  29  46  4f  2a
 
 ---
 
-## 3. 可编程按键表
+## 3. Programmable Key Table
 
-### 3.1 读取全部配置
+### 3.1 Reading the Full Configuration
 
-**命令**：`send_frame(01 06 50 01 <i>)` for `i` in 0..7
+**Command**: `send_frame(01 06 50 01 <i>)` for `i` in 0..7
 
 ```
 index 0 → 81 06 50 11 00 01 01 02 01 00 00 ...
@@ -143,27 +143,27 @@ index 6 → 81 06 50 11 06 00 00 00 00 00 00 ...     ← 未使用
 index 7 → 81 06 50 11 07 00 00 00 00 00 00 ...     ← 未使用
 ```
 
-**解析**（对照 lldb 反汇编出的 setter 格式）：
+**Parsing** (against the setter format recovered from the lldb disassembly):
 
 ```
 81 06 50 11 | index | 01 | num | ⟨类型|sign<<7⟩ ⟨键码⟩ ×num
               pt[4]   pt[5] pt[6]   pt[7]        pt[8]
 ```
 
-### 3.2 ⭐ 写入验证（端到端闭环）
+### 3.2 ⭐ Write Verification (end-to-end closed loop)
 
-**目标选择**：`index 0`（键 1），原值 `0x01` = 无效码 —— **改了不会损坏任何功能**。
+**Target selection**: `index 0` (Key 1), original value `0x01` = invalid code — **changing it cannot break any function**.
 
-| 步骤 | 报文 / 结果 |
+| Step | Frame / Result |
 |---|---|
-| 1. 读原值 | `81 06 50 11 00 01 01 02 01 00` |
-| 2. 写入 | `→ 01 06 50 04 00 01 01 02 68` |
-| 3. 写回复 | `← 81 06 50 14 00 01 01 02 68 00` （`access=0x14` = 写确认） |
-| 4. 读回 | `81 06 50 11 00 01 01 02 68 00` ✅ **已持久化** |
-| 5. **按真键** | **捕获到 `0x68` = F13，185 ms** ✅✅✅<br>← [原始证据第 282 行](evidence/2026-09-21-key-reprogram.log) |
-| 6. 还原 | `→ 01 06 50 04 00 01 01 02 01` → 读回 `[02, 01]` ✅ |
+| 1. Read original value | `81 06 50 11 00 01 01 02 01 00` |
+| 2. Write | `→ 01 06 50 04 00 01 01 02 68` |
+| 3. Write reply | `← 81 06 50 14 00 01 01 02 68 00` (`access=0x14` = write confirmation) |
+| 4. Read back | `81 06 50 11 00 01 01 02 68 00` ✅ **persisted** |
+| 5. **Press the real key** | **Captured `0x68` = F13, 185 ms** ✅✅✅<br>← [line 282 of the raw evidence](evidence/2026-09-21-key-reprogram.log) |
+| 6. Restore | `→ 01 06 50 04 00 01 01 02 01` → read back `[02, 01]` ✅ |
 
-**同时确认其余 5 个键未受影响**：
+**Also confirmed that the other 5 keys were unaffected**:
 
 ```
 index 1 : 01 01 01 02 28 00    ← 0x28 Enter，未变
@@ -173,9 +173,9 @@ index 4 : 04 01 01 02 4f 00    ← 0x4f，未变
 index 5 : 05 01 01 02 2a 00    ← 0x2a，未变
 ```
 
-**结论**：`类型=0x02` 时，第二个字节就是设备会上报的 HID 键码。 ✅
+**Conclusion**: With `type=0x02`, the second byte is exactly the HID keycode the device reports. ✅
 
-### 3.3 命令行的最终形态
+### 3.3 Final Form of the Command Line
 
 ```bash
 $ python3 vibekey.py --keys
@@ -193,23 +193,23 @@ $ python3 vibekey.py --keys
 
 ---
 
-## 4. 厂商通道行为
+## 4. Vendor Channel Behavior
 
-### 4.1 Studio 退出后，按键期间厂商通道是否发事件？
+### 4.1 After Studio Exits, Does the Vendor Channel Emit Events While Keys Are Pressed?
 
-**实验**：`vibekey.py --poll 2 -t 600`，用户按多个键。
+**Experiment**: `vibekey.py --poll 2 -t 600`, with the user pressing several keys.
 
-**结果**：按键时段内厂商通道**只有心跳**，**零条按键事件**。
+**Result**: During the key-press window the vendor channel carried **heartbeats only**, and **zero key events**.
 
 ```
 13:28:37.660 厂商 → 通知/心跳 ctr=2182346706399   cmd=0x0B flags=0 len=63
 ```
 
-**结论**：**脱离 Studio 后，按键只走标准 HID（接口 2），不碰私有通道。** ✅
+**Conclusion**: **Once detached from Studio, key presses go over standard HID only (interface 2) and never touch the private channel.** ✅
 
-### 4.2 Studio 运行时呢？（对照）
+### 4.2 What About While Studio Is Running? (control)
 
-`cap3.log`（Studio 运行中）11:55:37–43 连续 6 次按"键 1"：
+`cap3.log` (Studio running), 11:55:37–43, six consecutive presses of "Key 1":
 
 ```
 11:55:37.924 iface2 KEYBOARD keys=['ErrorRollOver']
@@ -220,16 +220,16 @@ $ python3 vibekey.py --keys
 11:55:43.444 iface2 KEYBOARD keys=['ErrorRollOver']
 ```
 
-同一时段**接口 3 无任何帧**。
+During the same window **interface 3 had no frames at all**.
 
-**结论**：即使是 Studio 在跑，**按键也走标准 HID**。
-（`deviceKeyEvent` 出现在历史日志里，但它**不是按键的必要通路**。）
+**Conclusion**: Even with Studio running, **key presses still go over standard HID**.
+(`deviceKeyEvent` does appear in the historical logs, but it is **not a required path for key presses**.)
 
-### 4.3 历史日志中的 deviceKeyEvent
+### 4.3 deviceKeyEvent in the Historical Logs
 
-从 62 MB 解码日志统计（4 天数据，共 3893 条）：
+Tallied from the 62 MB decoded log (4 days of data, 3893 records in total):
 
-| index | 条数 |
+| index | Records |
 |---|---|
 | 0 | 518 |
 | 1 | 230 |
@@ -238,94 +238,95 @@ $ python3 vibekey.py --keys
 | 4 | 645 |
 | 5 | 2320 |
 
-样例：
+Sample:
 
 ```json
 { "status" : 1, "access" : 2, "type" : "deviceKeyEvent", "index" : 3 }
 ```
 
-> `index 0..5` 与 §3 的控件编号体系一致，说明它是**同一套编号**。
-> 但触发条件未完全确定（见"未解问题"）。
+> `index 0..5` is consistent with the control numbering scheme in §3, which shows that it is **the same numbering**.
+> But the trigger condition is not fully determined (see "Open Questions").
 
-### 4.4 设备离线时的现象（最终回归时发现）
+### 4.4 What the device looks like when it is offline (found during the final regression)
 
-跑最终回归时发现 `--keys` 六个控件全部 `(无回复)`。排查结论：
+While running the final regression, `--keys` returned `(无回复)` for all six controls. Diagnosis:
 
-**dongle 活着，Vibe Key 本体没开机。**
+**The dongle is alive; the Vibe Key itself is powered off.**
 
-| 查询 | 回复 |
+| Query | Reply |
 |---|---|
-| `06 03 0a 01` 设备在线状态 | `06 03 0a 11` **00** `…` ← status = **0x00 离线** |
-| `06 02 03 01` dongle 版本 | `06 02 03 11 41 00 …` ✅ 正常 |
-| 其余 15 条（全部 `cmd=0x01`） | ❌ 无回复 |
+| `06 03 0a 01` device online status | `06 03 0a 11` **00** `…` ← status = **0x00 offline** |
+| `06 02 03 01` dongle version | `06 02 03 11 41 00 …` ✅ normal |
+| the other 15 (all `cmd=0x01`) | ❌ no reply |
 
-**规律**：`cmd=0x06` 由 dongle 处理，`cmd=0x01` 由设备本体处理（走无线链路）。
-本体关机时只有 `0x06` 会回。
+**The rule**: `cmd=0x06` is handled by the dongle, `cmd=0x01` by the device itself (over the wireless link).
+With the device powered off, only `0x06` answers.
 
-> 这不是故障，是设备的正常休眠/关机状态。已给 `vibekey.py` 加上离线提示。
+> This is not a fault — it is the device's normal sleep / power-off state. `vibekey.py` now prints an offline hint.
 
-#### ⚠️ 一次错误诊断（留档）
+#### ⚠️ A wrong diagnosis (archived)
 
-用户开机后，`--keys` 恢复正常（读到全部 6 个键），但 `--probe` 仍报"设备离线"。
-我一度据此认为设备仍处于休眠。**这个判断是错的** —— 真实原因是我自己刚写的代码：
+After the user powered the device on, `--keys` worked again (all 6 keys read), but `--probe` still reported
+"device offline". I took that as evidence the device was still asleep. **That call was wrong** — the real
+cause was code I had just written myself:
 
 ```python
-    @staticmethod                    # ← 没有 self
+    @staticmethod                    # ← no self
     def _describe(cmd, pt):
         if is_reply and cmd == 0x01:
             self.device_replied = True    # ← NameError
 ```
 
-异常在 **ctypes 回调里被静默吞掉**（只打一行 `Exception ignored`），
-于是回复行根本没打印 —— 症状与"设备关机"完全一致。
+The exception was **swallowed silently inside the ctypes callback** (it prints one `Exception ignored`
+line), so the reply line was never printed — a symptom identical to a powered-off device.
 
-**为什么 `--keys` 不受影响**：它设了 `self.hide = True`，在调用 `_describe` **之前**就 return 了。
+**Why `--keys` was unaffected**: it sets `self.hide = True` and returns *before* `_describe` is ever called.
 
-**教训**：判断离线不能只看"有没有回复"，要看**原始明文**。
-真离线时 `06 03 0a 11` 会回但 status 是 `00`；代码 bug 则**一行都不打印**。
+**Lesson**: never judge "offline" from "did a reply arrive" alone — look at the **raw plaintext**.
+When genuinely offline, `06 03 0a 11` still comes back but its status is `00`; a code bug prints **nothing at all**.
 
 ---
 
-## 5. 失败的尝试（留档）
+## 5. Failed Attempts (archived)
 
-| 尝试 | 结果 | 原因 |
+| Attempt | Result | Cause |
 |---|---|---|
-| 用 `IOHIDManagerOpen` 一次性打开 | ❌ `0xE00002C5` | 自己的抓包进程占着设备 |
-| 在 DSH 里跑抓包，同时用户跑 | ⚠️ 可用但会互相干扰 | 后来确认**非独占打开可以并存** |
-| 自由按压建立映射（实验 1、2） | ❌ 无法对齐 | 缺标注 |
-| 按"4 键 + 旋钮"模型推理 | ❌ 全错 | 实际是 **3 键** |
-| `objdump --start-address` 精确定位 | ❌ 输出全量 | LLVM objdump 对 Mach-O 支持有问题 |
-| 自动提取 setter 的 opcode | ❌ 得到 `01 00 00 00` | 提取脚本未覆盖该模式，需手工 lldb |
-| 用 `grep` 搜 62 MB 日志 | ❌ 报错 | `maximum repetition exceeds 255`，改用 Python |
-| 事后对齐日志与抓包时间 | ❌ 对不上 | xlog **延迟 flush**（当天日志最后写入 11:21，抓包在 11:44） |
-| 后台跑工具让用户看输出 | ❌ 用户看不到 | 输出没显示在用户屏幕上，应在用户终端跑 |
-| 用 iTerm2 跑但没输入监控权限 | ❌ 按键生效却抓不到 | `0xE00002E2`，且程序当时**静默跳过**了 |
+| Opening everything at once with `IOHIDManagerOpen` | ❌ `0xE00002C5` | Our own capture process was holding the device |
+| Running the capture inside DSH while the user also ran it | ⚠️ Worked, but the two interfered with each other | Later confirmed that **non-exclusive opens can coexist** |
+| Establishing a mapping by free pressing (Experiments 1, 2) | ❌ Could not align | Missing annotations |
+| Reasoning from a "4 keys + knob" model | ❌ All wrong | It is actually **3 keys** |
+| Pinpointing with `objdump --start-address` | ❌ Dumped the full output | LLVM objdump has problems with Mach-O |
+| Automatically extracting the setter's opcode | ❌ Got `01 00 00 00` | The extraction script did not cover that pattern; manual lldb was required |
+| Searching the 62 MB log with `grep` | ❌ Error | `maximum repetition exceeds 255`; switched to Python |
+| Aligning logs with capture times after the fact | ❌ Did not line up | xlog **flushes late** (that day's log was last written at 11:21, the capture was at 11:44) |
+| Running the tool in the background so the user could watch the output | ❌ The user saw nothing | The output was not shown on the user's screen; it must be run in the user's own terminal |
+| Running it in iTerm2 without input monitoring permission | ❌ Keys took effect but nothing was captured | `0xE00002E2`, and the program **silently skipped** it at the time |
 
 ---
 
-## 6. 未解问题
+## 6. Open Questions
 
-| 问题 | 现状 | 下一步 |
+| Question | Status | Next step |
 |---|---|---|
-| 组合键（`num > 1`） | 未测 | 试写 `[(0x02,0xE0),(0x02,0x06)]`（推测 = Ctrl+C） |
-| `类型 = 0x03`（系统/多媒体） | 未测 | 从解析器 `isSysCtrl` 分支推范围 |
-| `sign` 位（bit 7）语义 | 未测 | 观察 Studio 写入的组合键 |
-| `deviceKeyEvent` 触发条件 | 未定 | 可能是"按键功能被配置过"或某个握手 |
-| 指示灯参数字段布局 | 部分 | `00 00 02 07 02 \| 0a 02 07 02 02 \| …` 三组含义未定 |
-| AI 状态 → 灯的数值映射 | 未解 | lldb 断点 `+[MessageHelper setDeviceAIButtonFuncMessage:]` |
-| 电源键长按 | 未测（有风险） | 非必要 |
-| `index 6/7` 的用途 | 未知 | 可能是其他型号的控件（如 4 键版本） |
+| Key combinations (`num > 1`) | Untested | Try writing `[(0x02,0xE0),(0x02,0x06)]` (presumed = Ctrl+C) |
+| `type = 0x03` (system/multimedia) | Untested | Derive the range from the parser's `isSysCtrl` branch |
+| Semantics of the `sign` bit (bit 7) | Untested | Observe a key combination written by Studio |
+| `deviceKeyEvent` trigger condition | Undetermined | Possibly "the key function has been configured", or some handshake |
+| Indicator light parameter field layout | Partial | `00 00 02 07 02 \| 0a 02 07 02 02 \| …` — the meaning of the three groups is undetermined |
+| AI state → light value mapping | Unsolved | lldb breakpoint `+[MessageHelper setDeviceAIButtonFuncMessage:]` |
+| Long-pressing the power key | Untested (risky) | Not necessary |
+| Purpose of `index 6/7` | Unknown | Possibly controls of another model (e.g. a 4-key version) |
 
 ---
 
-## 7. 原始数据位置
+## 7. Raw Data Locations
 
-| 数据 | 路径 |
+| Data | Path |
 |---|---|
-| **可编程按键表的原始证据** | [evidence/2026-09-21-key-reprogram.log](evidence/2026-09-21-key-reprogram.log) |
-| 事件日志（工具自动写） | `/tmp/vibekey-events.log` |
-| 会话抓取 | `/tmp/vk.log`、`vk2.log`、`vk3.log`、`vk4.log`、`vk5.log` |
-| HID 抓包（含 Studio） | `~/ulanzi-re/raw/cap2.log`、`cap3.log` |
-| 62 MB 解码日志 | `~/ulanzi-re/raw/logs_decoded.txt` |
-| 命令表 | `~/ulanzi-re/raw/kwdm_message_builders.txt` |
-| kwdm 反汇编 | `~/ulanzi-re/raw/kwdm_arm64_disasm.txt` |
+| **Raw evidence for the programmable key table** | [evidence/2026-09-21-key-reprogram.log](evidence/2026-09-21-key-reprogram.log) |
+| Event log (written automatically by the tool) | `/tmp/vibekey-events.log` |
+| Session captures | `/tmp/vk.log`, `vk2.log`, `vk3.log`, `vk4.log`, `vk5.log` |
+| HID captures (including Studio) | `~/ulanzi-re/raw/cap2.log`, `cap3.log` |
+| 62 MB decoded log | `~/ulanzi-re/raw/logs_decoded.txt` |
+| Command table | `~/ulanzi-re/raw/kwdm_message_builders.txt` |
+| kwdm disassembly | `~/ulanzi-re/raw/kwdm_arm64_disasm.txt` |

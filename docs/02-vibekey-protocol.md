@@ -1,396 +1,395 @@
-# 02 · Vibe Key 协议与终端工具（第二期）
+# 02 · Vibe Key Protocol and Terminal Tool (Phase 2)
 
-> 🌐 [English](02-vibekey-protocol.en.md)
+> 🌐 [中文](02-vibekey-protocol.zh.md)
 
-> 第一期结论见 [01-ulanzi-studio-scope.md](01-ulanzi-studio-scope.md)。
-> 本文记录**已实测跑通**的协议细节与工具。
+> For the Phase 1 conclusions, see [01-ulanzi-studio-scope.md](01-ulanzi-studio-scope.md).
+> This document records the protocol details and the tool that have been **measured working end to end**.
 >
-> 📚 文档集：[README](../README.md) · [01 职责边界](01-ulanzi-studio-scope.md) · **02 协议** · [03 工具手册](03-tool-manual.md) · [04 逆向方法论](04-methodology.md) · [05 验证记录](05-verification-log.md)
+> 📚 Docs set: [README](../README.md) · [01 Scope](01-ulanzi-studio-scope.md) · **02 Protocol** · [03 Tool Manual](03-tool-manual.md) · [04 Methodology](04-methodology.md) · [05 Verification Log](05-verification-log.md)
 
 ---
 
-## 0. 一句话结论
+## 0. One-Sentence Conclusion
 
-**Ulanzi Vibe Key（AU05）可以完全脱离 Ulanzi Studio 使用。**
-不需要 Studio、不需要网络、不需要任何第三方库 —— 一个 800 行的 Python 文件就够了。
+**The Ulanzi Vibe Key (AU05) can be used completely independently of Ulanzi Studio.**
+No Studio, no network, no third-party libraries — a single 800-line Python file is enough.
 
 ---
 
-## 1. 硬件
+## 1. Hardware
 
-| 项 | 值 |
+| Item | Value |
 |---|---|
-| 产品 | Ulanzi Vibe Key（型号 **AU05**） |
-| USB | VID `0xFFF1` / PID `0x00DD`，复合设备 |
-| 序列号 | `202606031150` |
-| 固件 | dongle `4.4.2` / device `4.4.2` |
-| flashId | `<REDACTED>`（前 7 字节 ASCII = `AP53002`，型号前缀） |
+| Product | Ulanzi Vibe Key (model **AU05**) |
+| USB | VID `0xFFF1` / PID `0x00DD`, composite device |
+| Serial number | `202606031150` |
+| Firmware | dongle `4.4.2` / device `4.4.2` |
+| flashId | `<REDACTED>` (first 7 bytes as ASCII = `AP53002`, a model prefix) |
 | deviceSn | `<REDACTED>` |
-| MAC | **空**（无网络接口） |
-| 控件 | **3 个键（上下排列）+ 1 个旋钮 + 1 个电源键** |
+| MAC | **empty** (no network interface) |
+| Controls | **3 keys (stacked vertically) + 1 knob + 1 power key** |
 
-### HID 接口（实测描述符）
+### HID Interfaces (measured descriptors)
 
-**接口 2** —— 标准 HID，165 字节描述符，三个集合共用一个接口：
+**Interface 2** — standard HID, 165-byte descriptor, three collections sharing one interface:
 
-| Report ID | 集合 | 布局 |
+| Report ID | Collection | Layout |
 |---|---|---|
-| `0x01` | Consumer | 16 bit 多媒体键码 |
-| `0x02` | Mouse | 3 bit 按键 + 8 bit X + 8 bit Y + 8 bit 滚轮 + 8 bit AC Pan |
-| `0x03` | Keyboard | 8 bit 修饰位 + 8 bit 保留 + **6 × 8 bit 键码** + 5 bit LED 输出 |
+| `0x01` | Consumer | 16-bit media key code |
+| `0x02` | Mouse | 3-bit buttons + 8-bit X + 8-bit Y + 8-bit wheel + 8-bit AC Pan |
+| `0x03` | Keyboard | 8-bit modifier bits + 8-bit reserved + **6 × 8-bit key codes** + 5-bit LED output |
 
-**接口 3** —— 厂商私有，36 字节描述符：
+**Interface 3** — vendor-private, 36-byte descriptor:
 
 ```
 06 fc ff   Usage Page = 0xFFFC
 09 01      Usage
 a1 01      Collection (Application)
 09 02  85 55
-75 08  95 3f  81 02   → Input   Report ID 0x55，63 字节
-09 03  75 08  95 3f  91 02   → Output  Report ID 0x55，63 字节
+75 08  95 3f  81 02   → Input   Report ID 0x55, 63 bytes
+09 03  75 08  95 3f  91 02   → Output  Report ID 0x55, 63 bytes
 ```
 
-> ⚠️ 两个接口都在**同一个 USB 接口 2/3 上**，但 IOKit 里是**两个独立的 IOHIDDevice**。
+> ⚠️ Both interfaces sit on **the same USB interface 2/3**, but in IOKit they are **two independent IOHIDDevices**.
 
 ---
 
-## 2. 传输层：TEA 加密
+## 2. Transport Layer: TEA Encryption
 
-接口 3 的 63 字节负载是 **TEA 加密**的。
+The 63-byte payload of interface 3 is **TEA-encrypted**.
 
-| 项 | 值 |
+| Item | Value |
 |---|---|
-| 算法 | **TEA**（Tiny Encryption Algorithm，**不是 XTEA**） |
-| 模式 | **ECB**，8 字节分组，就地加密，无 IV、无填充 |
-| 轮数 | **32** |
+| Algorithm | **TEA** (Tiny Encryption Algorithm, **not XTEA**) |
+| Mode | **ECB**, 8-byte block, in-place, no IV, no padding |
+| Rounds | **32** |
 | delta | `0x9E3779B9` |
-| 密钥（16 B） | `ca ba a5 ca 6d 8a 2a bc ba 9e 5a ca ca 8b b8 9b` |
+| Key (16 B) | `ca ba a5 ca 6d 8a 2a bc ba 9e 5a ca ca 8b b8 9b` |
 
-密钥位置：`kwdm.dylib` 全局 `_gaui_custom_encrypt_keys`
-（arm64 `__DATA,__data+0x4a580`，x86_64 `+0x4e740`）。
+Key location: the `_gaui_custom_encrypt_keys` global in `kwdm.dylib`
+(arm64 `__DATA,__data+0x4a580`, x86_64 `+0x4e740`).
 
-**验证方式（决定性）**：
+**Verification method (decisive)**:
 
 ```
 TEA_ECB_Enc(00 00 00 00 00 00 00 00) == 38 90 c4 99 a3 60 aa ad
 ```
 
-那串曾经神秘兮兮的"固定尾串"，**就是全零分组的密文**。它从来不是常量。
+That "fixed tail string" that once seemed so mysterious **is simply the ciphertext of the all-zero block**. It was never a constant.
 
-### 63 vs 64 的关键细节
+### The Crucial 63 vs 64 Detail
 
-* 明文结构体是 **64 字节**，加密也是 **8 个完整分组（64 字节）**
-* 但 HID 报文总长也是 64 字节 —— **包含 1 字节 report ID**
-* 所以线上只发 `ct[0..62]`，**第 8 个分组的最后一个字节永远丢失**
+* The plaintext struct is **64 bytes**, and encryption likewise covers **8 complete blocks (64 bytes)**
+* But the total HID report length is also 64 bytes — **including the 1-byte report ID**
+* So only `ct[0..62]` is sent on the wire, and **the last byte of the 8th block is always lost**
 
-| 方向 | 做法 |
+| Direction | Approach |
 |---|---|
-| **解密** | 只解 **7 个分组（56 字节）**；末 7 字节是不可解的填充，当作 0 |
-| **加密** | 加密完整 64 字节，**只发前 63 字节** |
+| **Decrypt** | Decrypt only **7 blocks (56 bytes)**; the last 7 bytes are undecryptable padding and are treated as 0 |
+| **Encrypt** | Encrypt all 64 bytes, **send only the first 63 bytes** |
 
-TEA 实现见 [vibekey.py](../vibekey.py) 顶部，或 `~/ulanzi-re/tools/tea_kwdm.py`。
+The TEA implementation is at the top of [vibekey.py](../vibekey.py), or in `~/ulanzi-re/tools/tea_kwdm.py`.
 
 ---
 
-## 3. 帧格式
+## 3. Frame Format
 
 ```
-frame[0]        帧头：cmd = frame[0] & 0x1F，高 3 位是标志
-frame[1]        配置头 { grp = b & 0x0F, sub = b >> 4 }
+frame[0]        frame header: cmd = frame[0] & 0x1F, top 3 bits are flags
+frame[1]        config header { grp = b & 0x0F, sub = b >> 4 }
 frame[2]        opcode
-frame[3]        access：0x01 = 读，0x04 = 写，其他值见下
-frame[4..]      参数
+frame[3]        access: 0x01 = read, 0x04 = write, other values see below
+frame[4..]      parameters
 ```
 
-### 方向判定
+### Determining Direction
 
-| 标志 | 含义 |
+| Flag | Meaning |
 |---|---|
-| `frame[0] & 0x80` = 1（即 `0x81`） | **设备 → 主机（回复）** |
-| `frame[3] & 0x10` = 1（即 `0x11`） | 同上，回复标记 |
+| `frame[0] & 0x80` = 1 (i.e. `0x81`) | **device → host (reply)** |
+| `frame[3] & 0x10` = 1 (i.e. `0x11`) | same as above, reply marker |
 
-请求 `01 0b 89 01` → 回复 `81 0b 89 11`。
+Request `01 0b 89 01` → reply `81 0b 89 11`.
 
-### cmd 取值
+### cmd Values
 
-| cmd | 处理器 |
+| cmd | Handler |
 |---|---|
-| `0x01` | 设备消息 `handleDeviceMessage` |
-| `0x06` | USB 消息 `handleUsbMessage` |
-| `0x0B` | 通知 `handleNoticeMessage` |
-| `0x0C` / `0x0D` | BLE 短/长音频 |
-| `0x0E` | USB 音频 |
-| `0x15` | 上传图片 |
-| `0x1E` / `0x1F` | dongle / 设备升级 |
+| `0x01` | device message `handleDeviceMessage` |
+| `0x06` | USB message `handleUsbMessage` |
+| `0x0B` | notice `handleNoticeMessage` |
+| `0x0C` / `0x0D` | BLE short/long audio |
+| `0x0E` | USB audio |
+| `0x15` | image upload |
+| `0x1E` / `0x1F` | dongle / device firmware upgrade |
 
-### 通知子类型（cmd = 0x0B，取 `frame[1]`）
+### Notice Subtypes (cmd = 0x0B, taken from `frame[1]`)
 
-| 子类型 | 含义 |
+| Subtype | Meaning |
 |---|---|
-| `0x7B` | 心跳（`frame[2..7]` 是计数/状态） |
-| `0x0B` | 通知 B |
-| `0x0D` | 通知 D |
+| `0x7B` | heartbeat (`frame[2..7]` is counter/status) |
+| `0x0B` | notice B |
+| `0x0D` | notice D |
 
 ---
 
-## 4. 命令表（实测可用）
+## 4. Command Table (measured working)
 
-完整 85 条见 `~/ulanzi-re/raw/kwdm_message_builders.txt`。
-下面是 Vibe Key 上**实际验证过**的：
+For all 85 entries, see `~/ulanzi-re/raw/kwdm_message_builders.txt`.
+The following are the ones **actually verified** on the Vibe Key:
 
-### 只读查询（安全，随时可发）
+### Read-Only Queries (safe, may be sent at any time)
 
-| 名称 | 报文字节 | 实测回复 |
+| Name | Report bytes | Measured reply |
 |---|---|---|
-| 设备在线状态 | `06 03 0a 01` | `01` = 在线 |
-| 设备 flashId | `01 04 0b 01` | ⟨16 字节，已脱敏⟩，前 7 字节 = `AP53002` |
-| 设备 SN | `01 01 0b 01` | `<REDACTED>`（分两包） |
-| 固件版本 | `01 04 04 01` | `… 04 04 02 …` = 4.4.2 |
-| dongle 版本 | `06 02 03 01` | `… 04 04 02 …` = 4.4.2 |
-| 电量 | `01 01 02 01` | `dd 0d 1e 00 f1 01`（`0x0ddd` ≈ 3549 mV） |
-| Hooks 模式 | `01 0b 89 01` | 全 0 |
-| 指示灯参数 | `01 0b 88 01` | `00 00 02 07 02 \| 0a 02 07 02 02 \| 0a 02 07 02 01 \| 0a 02 07 02 00` |
-| 麦克风降噪 | `01 01 90 01` | `00 64 00 64` → 双麦各 低=0 高=100 |
-| 全部按键功能 | `01 06 31 01` | 全 0（未配置） |
-| AI 按钮功能 | `01 06 21 01` | 全 0 |
-| 马达强度 | `01 06 40 01` | 全 0 |
-| 旋钮开关 | `01 01 34 01` | 全 0 |
+| Device online status | `06 03 0a 01` | `01` = online |
+| Device flashId | `01 04 0b 01` | ⟨16 bytes, redacted⟩, first 7 bytes = `AP53002` |
+| Device SN | `01 01 0b 01` | `<REDACTED>` (split across two packets) |
+| Firmware version | `01 04 04 01` | `… 04 04 02 …` = 4.4.2 |
+| dongle version | `06 02 03 01` | `… 04 04 02 …` = 4.4.2 |
+| Battery | `01 01 02 01` | `dd 0d 1e 00 f1 01` (`0x0ddd` ≈ 3549 mV) |
+| Hooks mode | `01 0b 89 01` | all 0 |
+| Indicator light parameters | `01 0b 88 01` | `00 00 02 07 02 \| 0a 02 07 02 02 \| 0a 02 07 02 01 \| 0a 02 07 02 00` |
+| Microphone noise reduction | `01 01 90 01` | `00 64 00 64` → for both mics, low=0 high=100 |
+| All key functions | `01 06 31 01` | all 0 (unconfigured) |
+| AI button function | `01 06 21 01` | all 0 |
+| Motor strength | `01 06 40 01` | all 0 |
+| Knob switch | `01 01 34 01` | all 0 |
 
-### 写入类（⚠️ 已定位但尚未实测）
+### Write Commands (⚠️ located but not yet measured)
 
-| 名称 | 报文字节 |
+| Name | Report bytes |
 |---|---|
-| **设置按键快捷功能** | `01 06 50 04` + `num/pages/values/signs` |
-| 设置按键功能 | `01 06 10 04` + `funcIndex` |
-| 设置 AI 按钮功能 | `01 06 21 04` + `index` |
-| 设置指示灯参数 | `01 0b 88 04` + `which/value` |
-| 设置 Hooks 模式 | `01 0b 89 04` |
-| 设置亮度 | `01 06 20 04` |
-| 设置麦克风降噪 | `01 01 90 04` + `low/high` |
+| **Set key shortcut function** | `01 06 50 04` + `num/pages/values/signs` |
+| Set key function | `01 06 10 04` + `funcIndex` |
+| Set AI button function | `01 06 21 04` + `index` |
+| Set indicator light parameters | `01 0b 88 04` + `which/value` |
+| Set Hooks mode | `01 0b 89 04` |
+| Set brightness | `01 06 20 04` |
+| Set microphone noise reduction | `01 01 90 04` + `low/high` |
 
 ---
 
-### ⚠️ dongle 级 vs 设备级（`cmd = 0x06` vs `0x01`）
+### ⚠️ Dongle-level vs device-level (`cmd = 0x06` vs `0x01`)
 
-`cmd` 决定这条报文归谁处理，**排查问题时这是第一分界线**：
+`cmd` determines who handles a frame. **When troubleshooting, this is the first dividing line:**
 
-| cmd | 处理者 | 设备关机时 |
+| cmd | Handler | When the device is powered off |
 |---|---|---|
-| `0x06` | **dongle**（USB 那一端） | ✅ 照常应答 |
-| `0x01` | **Vibe Key 本体**（走无线） | ❌ 完全无应答 |
+| `0x06` | the **dongle** (the USB end) | ✅ still answers |
+| `0x01` | the **Vibe Key itself** (over the wireless link) | ❌ no reply at all |
 
-**实测**：设备关机时跑 `--probe`，17 条查询只有 2 条回复，
-且恰好都是 `0x06`（`设备在线状态`、`dongle 版本`）。
+**Measured**: with the device powered off, `--probe` sends 17 queries and only 2 come back —
+and both are `0x06` (`device online status`, `dongle version`).
 
-### 设备在线状态的判读
+### Reading the device online status
 
 ```
-→ 06 03 0a 01                    查询在线状态
-← 06 03 0a 11 ⟨status⟩ 00 00 …   status = 0x01 在线 / 0x00 离线
+→ 06 03 0a 01                    query online status
+← 06 03 0a 11 ⟨status⟩ 00 00 …   status = 0x01 online / 0x00 offline
 ```
 
-⚠️ **注意**：这条查询本身由 dongle 应答，所以**永远会有回复** ——
-真正要看的是回复里那个 `status` 字节。别把"有回复"当成"设备在线"。
+⚠️ **Note**: this query is answered by the dongle itself, so there is **always** a reply —
+what matters is the `status` byte inside it. Don't mistake "there was a reply" for "the device is online".
 
 ---
 
-## 5. 控件映射（实测确认）
+## 5. Control Mapping (confirmed by measurement)
 
-**验证方法**：让你按固定顺序操作（按下旋钮 → 键1 → 键2 → 键3 → 右拧×3 → 左拧×3 → 长按旋钮），
-与捕获到的事件流做 1:1 时间对齐。结果完全吻合。
+**Verification method**: you were asked to operate the controls in a fixed order (knob press → key 1 → key 2 → key 3 → twist right ×3 → twist left ×3 → long-press knob), and we aligned that 1:1 in time against the captured event stream. The results matched exactly.
 
-| 控件 | 报码 | HID 含义 | 说明 |
+| Control | Report code | HID meaning | Notes |
 |---|---|---|---|
-| **键 1（上）** | `0x01` | ErrorRollOver | **无效码，系统会忽略** |
-| **键 2（中）** | `0x28` | Enter | |
-| **键 3（下）** | `0x29` | Esc | |
-| **旋钮 → 右拧** | `0x4F` | RightArrow | 每格一次 |
-| **旋钮 ← 左拧** | `0x2A` | Backspace | 每格一次 |
-| **旋钮 按下** | `0x46` | PrintScreen | 短按/长按都发 |
-| **电源键** | — | — | **短按无报文**（由设备硬件处理） |
+| **Key 1 (top)** | `0x01` | ErrorRollOver | **invalid code, the system ignores it** |
+| **Key 2 (middle)** | `0x28` | Enter | |
+| **Key 3 (bottom)** | `0x29` | Esc | |
+| **Knob twist → right** | `0x4F` | RightArrow | once per detent |
+| **Knob twist ← left** | `0x2A` | Backspace | once per detent |
+| **Knob press** | `0x46` | PrintScreen | emitted on both short and long press |
+| **Power key** | — | — | **no report on short press** (handled by the device hardware) |
 
-### ⭐ 一个意外但重要的规律
+### ⭐ An Unexpected but Important Pattern
 
-**按压时长可以区分旋钮转动和按键：**
+**Press duration distinguishes knob rotation from key presses:**
 
-| 类型 | 时长 |
+| Type | Duration |
 |---|---|
-| 旋钮转动（瞬时脉冲） | **0～10 ms** |
-| 人手按键 | **80～2000 ms** |
+| Knob rotation (instantaneous pulse) | **0–10 ms** |
+| Human key press | **80–2000 ms** |
 
-阈值取 **25 ms** 非常可靠。这让程序不需要预先知道映射就能分类事件。
+A threshold of **25 ms** is very reliable. This lets a program classify events without knowing the mapping in advance.
 
-### ⚠️ 键 1 是"残废"的
+### ⚠️ Key 1 Is "Crippled"
 
-键 1 发 `0x01`（ErrorRollOver）—— **一个协议上无效的键码，操作系统直接丢弃**。
+Key 1 emits `0x01` (ErrorRollOver) — **a key code that is invalid by protocol, which the operating system simply discards**.
 
-这不是 bug，是**设计如此**：键 1 就是 AI 对话键，天生只为 Studio 服务。
-脱离 Studio，**键 1 等于没有**。
+This is not a bug, it is **by design**: key 1 is the AI conversation key, born to serve Studio alone.
+Away from Studio, **key 1 may as well not exist**.
 
-> 这解释了 Ulanzi 为什么一定要用户装 Studio —— 主功能键被绑死在自家软件上了。
-> **但这是可以改的**，见下文下一步。
+> This explains why Ulanzi insists that users install Studio — the primary function key is lashed to its own software.
+> **But this can be changed**; see the next steps below.
 
 ---
 
-## 6. 按键配置读写（设备端可编程按键表）⭐
+## 6. Reading and Writing Key Configuration (on-device programmable key table) ⭐
 
-**这是"甩掉 Studio"的关键能力：设备内部的按键表可以被任意改写。**
+**This is the key capability for "ditching Studio": the key table inside the device can be rewritten freely.**
 
-### 帧格式
+### Frame Format
 
-| 操作 | 报文 |
+| Operation | Report |
 |---|---|
-| **读** | `→ 01 06 50 01 <index>` |
-| | `← 81 06 50 11 <index> 01 <num> <类型\|sign<<7> <键码> ×num` |
-| **写** | `→ 01 06 50 04 <index> 01 <num> <类型\|sign<<7> <键码> ×num` |
-| | `← 81 06 50 14 …` ← `access = 0x14` 表示写确认 |
+| **Read** | `→ 01 06 50 01 <index>` |
+| | `← 81 06 50 11 <index> 01 <num> <type\|sign<<7> <key code> ×num` |
+| **Write** | `→ 01 06 50 04 <index> 01 <num> <type\|sign<<7> <key code> ×num` |
+| | `← 81 06 50 14 …` ← `access = 0x14` means write confirmation |
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `index` | 控件编号 |
-| `num` | 这一项包含几个按键（**支持组合键**） |
-| `类型` | `0x02` = 普通按键，`0x03` = 系统/多媒体 |
-| `sign` | 类型字节的最高位（bit 7） |
-| `键码` | HID Usage ID |
+| `index` | control number |
+| `num` | how many keys this entry contains (**key combinations supported**) |
+| `type` | `0x02` = ordinary key, `0x03` = system/multimedia |
+| `sign` | the top bit (bit 7) of the type byte |
+| `key code` | HID Usage ID |
 
-### index ↔ 控件（出厂值）
+### index ↔ Control (factory values)
 
-| index | 控件 | 出厂键码 |
+| index | Control | Factory key code |
 |---|---|---|
-| 0 | 键 1（上） | `0x01` ErrorRollOver（**无效码**） |
-| 1 | 键 2（中） | `0x28` Enter |
-| 2 | 键 3（下） | `0x29` Esc |
-| 3 | 旋钮 按下 | `0x46` PrintScreen |
-| 4 | 旋钮 → 右拧 | `0x4F` RightArrow |
-| 5 | 旋钮 ← 左拧 | `0x2A` Backspace |
+| 0 | Key 1 (top) | `0x01` ErrorRollOver (**invalid code**) |
+| 1 | Key 2 (middle) | `0x28` Enter |
+| 2 | Key 3 (bottom) | `0x29` Esc |
+| 3 | Knob press | `0x46` PrintScreen |
+| 4 | Knob twist → right | `0x4F` RightArrow |
+| 5 | Knob twist ← left | `0x2A` Backspace |
 
-> index 6、7 存在但未使用。
+> index 6 and 7 exist but are unused.
 
-### ⭐ 实测验证（端到端闭环，四次全部通过）
+### ⭐ Measured Verification (end-to-end loop, all four passes succeeded)
 
-| 步骤 | 结果 |
+| Step | Result |
 |---|---|
-| 1. 读 index 0 | `[0x02, 0x01]` |
-| 2. 写 `01 06 50 04 00 01 01 02 68` | 回复 `81 06 50 14 00 01 01 02 68` |
-| 3. 读回 index 0 | `[0x02, 0x68]` ✅ 已落盘 |
-| 4. **按"键 1"** | **设备真的发出 `0x68` = F13** ✅✅ |
+| 1. Read index 0 | `[0x02, 0x01]` |
+| 2. Write `01 06 50 04 00 01 01 02 68` | reply `81 06 50 14 00 01 01 02 68` |
+| 3. Read back index 0 | `[0x02, 0x68]` ✅ persisted |
+| 4. **Press "key 1"** | **the device really emits `0x68` = F13** ✅✅ |
 
-**结论：`类型=0x02` 时，第二个字节就是设备会上报的 HID 键码。改它即可改键。**
+**Conclusion: when `type=0x02`, the second byte is the HID key code the device will report. Change it and you change the key.**
 
-### 命令行
+### Command Line
 
 ```bash
-python3 vibekey.py --keys                                # 列出六个控件当前配置
-python3 vibekey.py --set-key 0=F13                       # 键1 改成 F13
-python3 vibekey.py --set-key 0=enter --set-key 2=0x04    # 一次改多个
+python3 vibekey.py --keys                                # list the current configuration of all six controls
+python3 vibekey.py --set-key 0=F13                       # change key 1 to F13
+python3 vibekey.py --set-key 0=enter --set-key 2=0x04    # change several at once
 ```
 
-键码三种写法都接受：`0x68` / `104` / `F13`（也认 `enter`、`esc`、`lctrl` 等名字）。
+Key codes are accepted in three forms: `0x68` / `104` / `F13` (names such as `enter`, `esc`, `lctrl` are also recognized).
 
-### 尚未验证
+### Not Yet Verified
 
-- `num > 1` 的组合键实际行为（推测 `[(0x02,0xE0),(0x02,0x06)]` = Ctrl+C）
-- `类型 = 0x03`（系统/多媒体）的取值范围
-- `sign` 位（bit 7）的语义
+- the actual behavior of key combinations with `num > 1` (conjecture: `[(0x02,0xE0),(0x02,0x06)]` = Ctrl+C)
+- the value range of `type = 0x03` (system/multimedia)
+- the semantics of the `sign` bit (bit 7)
 
 ---
 
-## 7. 数据流向（脱离 Studio 后）
+## 7. Data Flow (after leaving Studio)
 
 ```
-按键  →  设备固件  →  ① 接口2 标准 HID 键盘报文（直接注入 OS，任何程序都能收）
-                   →  ② 接口3 厂商通道 deviceKeyEvent（仅 Studio 在跑时才有）
+key   →  device firmware  →  ① interface 2 standard HID keyboard report (injected directly into the OS, any program can receive it)
+                          →  ② interface 3 vendor channel deviceKeyEvent (present only while Studio is running)
 ```
 
-**实测：Studio 退出后，按键时段内厂商通道只有心跳，没有任何 `deviceKeyEvent`。**
+**Measured: after Studio exits, during key presses the vendor channel carries only heartbeats and no `deviceKeyEvent` at all.**
 
-> 也就是说：**读按键完全不需要碰私有协议**，任何程序都能像读普通键盘一样读它。
+> In other words: **reading key presses requires touching the proprietary protocol not at all** — any program can read them just like an ordinary keyboard.
 
 ---
 
-## 8. 终端工具 vibekey.py
+## 8. Terminal Tool vibekey.py
 
-零依赖（Python 3 标准库 + 系统 IOKit），**不读 Ulanzi Studio 的任何文件**。
+Zero dependencies (Python 3 standard library + system IOKit), and it **reads none of Ulanzi Studio's files**.
 
 ```bash
-cd <项目目录>
+cd <project directory>
 python3 vibekey.py --probe --poll 2
 ```
 
-| 参数 | 作用 |
+| Option | Effect |
 |---|---|
-| `--probe` | 启动时读一遍设备状态 |
-| `--poll 2` | 每 2 秒保活，保持设备唤醒 |
-| `--learn` | 打印每帧原始密文/明文 |
-| `--raw` | 心跳也全打出来 |
-| `--descriptor` | dump HID 报文描述符 |
-| `--list` | 只列接口 |
-| `--log 文件` | 事件同时写日志（默认 `/tmp/vibekey-events.log`） |
-| `--echo` | 保留终端回显（默认关闭，避免按键字符冲乱输出） |
-| `--keys` | **列出设备端按键配置** |
-| `--set-key IDX=VALUE` | **改控件的 HID 键码**（可重复） |
-| `-t 30` | 只跑 30 秒 |
+| `--probe` | read device state once at startup |
+| `--poll 2` | keepalive every 2 seconds, keeping the device awake |
+| `--learn` | print the raw ciphertext/plaintext of every frame |
+| `--raw` | print heartbeats too |
+| `--descriptor` | dump the HID report descriptor |
+| `--list` | list interfaces only |
+| `--log FILE` | also write events to a log (default `/tmp/vibekey-events.log`) |
+| `--echo` | keep terminal echo (off by default, so injected key characters do not scramble the output) |
+| `--keys` | **list the on-device key configuration** |
+| `--set-key IDX=VALUE` | **change a control's HID key code** (repeatable) |
+| `-t 30` | run for only 30 seconds |
 
-输出示例：
+Example output:
 
 ```
-13:36:28.960 按键   ⌨ 旋钮 按下    PrintScreen    178 ms
-13:36:32.822 旋钮   ⟳ 旋钮 ← 左拧   Backspace        2 ms
-13:36:33.778 旋钮   ⟳ 旋钮 → 右拧   RightArrow       3 ms
-13:36:35.209 按键   ⌨ 键 1 (上)    ErrorRollOver  132 ms
-13:36:36.164 按键   ⌨ 键 2 (中)    Enter          147 ms
-13:36:36.908 按键   ⌨ 键 3 (下)    Esc             90 ms
+13:36:28.960 key    ⌨ knob press          PrintScreen     178 ms
+13:36:32.822 knob   ⟳ knob twist ← left   Backspace         2 ms
+13:36:33.778 knob   ⟳ knob twist → right  RightArrow        3 ms
+13:36:35.209 key    ⌨ key 1 (top)         ErrorRollOver   132 ms
+13:36:36.164 key    ⌨ key 2 (middle)      Enter           147 ms
+13:36:36.908 key    ⌨ key 3 (bottom)      Esc              90 ms
 ```
 
-### 实现要点（踩过的坑）
+### Implementation Notes (pitfalls)
 
-1. **不能用 `IOHIDManagerOpen`** —— 它要求所有匹配设备同时打开，任何一个失败
-   （被独占 `0xE00002C5` 或无权限 `0xE00002E2`）整个调用就失败。
-   → 必须用 `IOServiceGetMatchingServices` + 逐个 `IOHIDDeviceOpen`。
+1. **`IOHIDManagerOpen` cannot be used** — it requires all matching devices to be opened at once, and if any one of them fails
+   (held exclusively `0xE00002C5` or lacking permission `0xE00002E2`) the entire call fails.
+   → you must use `IOServiceGetMatchingServices` + `IOHIDDeviceOpen` one by one.
 
-2. **输入监控权限是硬门槛** —— 没权限时 `IOHIDDeviceOpen` 返回 `0xE00002E2`，
-   此时**按键一条都收不到**，但设备照样往系统注入按键。
-   → 程序必须**大声报错**，不能静默跳过。
+2. **Input Monitoring permission is a hard gate** — without permission `IOHIDDeviceOpen` returns `0xE00002E2`,
+   and in that state **not a single key press is received**, yet the device still injects keys into the system.
+   → the program must **fail loudly**; it must not skip silently.
 
-3. **按键会真的打进焦点窗口** —— 键 2 打 `Enter`、键 3 打 `Esc`、旋钮打方向键/退格。
-   → 默认 `stty -echo`，否则屏幕会被冲乱。
+3. **Key presses really do land in the focused window** — key 2 types `Enter`, key 3 types `Esc`, the knob types arrow keys/backspace.
+   → `stty -echo` by default, otherwise the screen gets scrambled.
 
-4. **设备是被动的** —— 不轮询就不说话（连心跳都没有）。`--poll` 保活。
+4. **The device is passive** — it says nothing unless polled (not even a heartbeat). `--poll` keeps it alive.
 
-5. **两个实例可以同时打开**（都是 `kIOHIDOptionsTypeNone`，非独占），不会互相打架。
+5. **Two instances can open it at the same time** (both `kIOHIDOptionsTypeNone`, non-exclusive) without fighting each other.
 
 ---
 
-## 9. 未解 / 下一步
+## 9. Open Questions / Next Steps
 
-### 未解
+### Open Questions
 
-- 电源键长按是否关机会不会发报文（未测，有风险）
-- 通知子类型 `0x0B` / `0x0D` 的完整语义
-- 指示灯参数的字段布局（`00 00 02 07 02 | 0a 02 07 02 02 | 0a 02 07 02 01 | 0a 02 07 02 00`）
-  疑似 3 组（对应 待机 / 工作中 / 需要审批），但字节含义未定
-- AI 状态 → 指示灯的具体数值映射
-  （`UlanziDeck::updateIndicatorLightByState` / `LedIndicator::getConfigForState`）
-- 组合键（`num > 1`）与 `类型=0x03` 的实际行为
+- whether a long press of the power key (which may power the device off) emits a report (untested, risky)
+- the full semantics of notice subtypes `0x0B` / `0x0D`
+- the field layout of the indicator light parameters (`00 00 02 07 02 | 0a 02 07 02 02 | 0a 02 07 02 01 | 0a 02 07 02 00`),
+  apparently 3 groups (corresponding to standby / working / awaiting approval), but the byte meanings are undetermined
+- the concrete value mapping from AI state → indicator light
+  (`UlanziDeck::updateIndicatorLightByState` / `LedIndicator::getConfigForState`)
+- the actual behavior of key combinations (`num > 1`) and of `type=0x03`
 
-### 下一步（按价值排序）
+### Next Steps (ordered by value)
 
-1. ~~把键 1 重新编程~~ ✅ **已完成**，见第 6 节
-2. **驱动指示灯** —— 用 `setDeviceIndicatorLight*` (`01 0b 88 04`)，
-   复刻 AI 状态灯效
-3. **Ollama / 脚本回调** —— 既然按键是标准键盘，可以直接接 shell 脚本
-4. **做成常驻服务** —— 替代 Studio 的"AI hooks → 指示灯"链路
+1. ~~Reprogram key 1~~ ✅ **done**, see Section 6
+2. **Drive the indicator light** — use `setDeviceIndicatorLight*` (`01 0b 88 04`) to
+   replicate the AI state lighting effects
+3. **Ollama / script callbacks** — since the keys are a standard keyboard, they can drive shell scripts directly
+4. **Turn it into a resident service** — replacing Studio's "AI hooks → indicator light" pipeline
 
 ---
 
-## 10. 证据与产物位置
+## 10. Evidence and Artifact Locations
 
-| 内容 | 路径 |
+| Item | Path |
 |---|---|
-| 终端工具 | [vibekey.py](../vibekey.py) |
-| TEA 编解码器 | `~/ulanzi-re/tools/tea_kwdm.py` |
-| 命令表（85 条） | `~/ulanzi-re/raw/kwdm_message_builders.txt` |
-| 结构体布局（109 条） | `~/ulanzi-re/raw/kwdm_struct_layout.txt` |
-| kwdm 逆向报告 | `~/ulanzi-re/findings/kwdm-protocol.md` |
-| xlog 解码后的 62 MB 日志 | `~/ulanzi-re/raw/logs_decoded.txt` |
-| 实测事件日志 | `/tmp/vibekey-events.log` |
+| Terminal tool | [vibekey.py](../vibekey.py) |
+| TEA codec | `~/ulanzi-re/tools/tea_kwdm.py` |
+| Command table (85 entries) | `~/ulanzi-re/raw/kwdm_message_builders.txt` |
+| Struct layouts (109 entries) | `~/ulanzi-re/raw/kwdm_struct_layout.txt` |
+| kwdm reverse engineering report | `~/ulanzi-re/findings/kwdm-protocol.md` |
+| 62 MB decoded xlog | `~/ulanzi-re/raw/logs_decoded.txt` |
+| Measured event log | `/tmp/vibekey-events.log` |

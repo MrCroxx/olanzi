@@ -39,7 +39,11 @@ make dev
 
 `make dev` builds and opens a Debug version through the existing packaging script, producing `build/Olanzi.app`. The main app has a complete SwiftUI keymap interface and AppKit menu bar; it needs no Python process, browser, or local HTTP service. Quit official Studio and any legacy tool holding the device, plug in the receiver, turn on Vibe Key, then select a control, edit its keycode, and apply in the app.
 
-Configure six actions: three keys plus knob press, right twist, and left twist. Each push control supports a primary action and optional double-press/long-press actions; rotary ticks remain immediate. Normal edits save an atomic host map without rewriting device keycodes. Macros, multimedia, and lighting remain outside this implementation. Closing the window leaves the menu-bar app maintaining its device connection, heartbeats, and key forwarding through the saved host map; quit through the menu to stop it. No login item or boot service is installed.
+The interface supports English and Simplified Chinese. Open Settings from the main window’s top navigation or the macOS application menu (`Cmd-,`) to choose Follow System, English, or Simplified Chinese; the permission welcome page also has a language selector. Follow System is the default and falls back to English for unsupported system languages. Changes take effect immediately and are remembered without restarting, changing key mappings, or discarding drafts. User-defined profile names and file paths remain unchanged.
+
+Use **Record Shortcut** beside the action title to capture a combination in a compact inline bar. Hold the desired keys together, such as A+B or Control+A+B, then release them all to preview the result. Choose **Use Shortcut** to update the draft and save it to this Mac to activate it; combinations are simultaneous key holds, not timed macros.
+
+Configure six actions: three keys plus knob press, right twist, and left twist. Each push control supports a primary action and optional double-press/long-press actions; rotary ticks remain immediate. When editing a long-press action, choose **Hold** (the default) or **Tap Once** under **Trigger Behavior**: at the threshold, either hold the action until release or emit one pulse without repeating while the control stays down. Existing profiles default to Hold. Normal edits save an atomic host map without rewriting device keycodes. Macros, multimedia, and lighting remain outside this implementation. Closing the window leaves the menu-bar app maintaining its device connection, heartbeats, and key forwarding through the saved host map; quit through the menu to stop it. No login item or boot service is installed.
 
 ```bash
 # Isolated demo without real hardware access
@@ -49,7 +53,11 @@ swift run --package-path native Olanzi --demo
 swift test --package-path native
 ```
 
-Studio heartbeats switch keys to the vendor-event path, so both ordinary keys and Fn need host forwarding through the saved host map and Input Monitoring plus Accessibility permissions for **Olanzi App**. Select **Fn** in the modifier category and apply; no additional switch is needed, and drafts do not affect forwarding. Fn uses device keycode `0x01`, also assigned to the factory top key. Keep the app path and signing certificate stable; identity changes may require renewed authorization. The earlier vendor-forwarding build was physically verified with Enter and Doubao Fn; the new runtime architecture, migration, gesture rules, and checks are documented in [10 · Daemon Input Runtime](docs/10-input-runtime.md).
+Studio heartbeats switch keys to the vendor-event path, so both ordinary keys and Fn need host forwarding through the saved host map and Input Monitoring plus Accessibility permissions for **Olanzi App**. Heartbeats are enabled only with a valid local map, an online device, and the required permissions; otherwise they pause while read-only queries remain available. The app loads an existing host configuration first. If none exists, it provides an editable factory-key draft even without a device; only an explicit local save persists and activates it. Existing device mappings do not determine this draft or block editing. `从设备键位导入` (import device mappings) is an optional profile-page action: it validates the snapshot and loads a draft, or identifies the unsupported control while retaining the current draft. No device mappings are rewritten. A corrupt local configuration file is preserved and requires repair followed by an app restart. Select **Fn** in the modifier category and apply; no additional switch is needed, and drafts do not affect forwarding. Fn uses device keycode `0x01`, also assigned to the factory top key. Keep the app path and signing certificate stable; identity changes may require renewed authorization. The earlier vendor-forwarding build was physically verified with Enter and Doubao Fn; the new runtime architecture, migration, gesture rules, and checks are documented in [10 · Daemon Input Runtime](docs/10-input-runtime.md).
+
+The main window shows battery percentage and charging status below the connection status, refreshing through a read-only query every 20 seconds while online. Levels at or below 20% appear orange; offline or unavailable readings show `电量 —`. Battery-query failures are reported separately and do not disable Fn forwarding.
+
+Double-press and long-press actions remain supported. To move a configuration between Macs, export the complete `HostProfile` JSON and import it on the other Mac, then explicitly save it locally. The profile includes primary, double-press, and long-press actions, the long-press trigger behavior, and timing values. Automatic cross-Mac synchronization through the device is not provided, and this workflow does not write device mappings.
 
 See **[09 · Native macOS App](docs/09-native-macos.md)** for builds, menu-bar lifecycle, permissions, and verification limits. The old Python/browser prototype and daemon instructions remain in [06 · Legacy Local Workspace Prototype](docs/06-local-workspace.md), rather than serving as the main app entry point. See [08 · Mac Fn](docs/08-mac-fn.md) for the underlying mechanism.
 
@@ -246,7 +254,7 @@ and counts as an **intermediate artifact** — it is not in this repository.
 - [x] **Phase 5** — Python local workspace prototype (retained as a research reference)
 - [x] **Phase 6** — Native Swift menu-bar app (keymap interface, background heartbeats, Fn assignments)
 - [ ] **Next** — Extend lighting, automation, and other Studio capabilities as their protocols are verified
-- [ ] To be verified — key combinations (`num > 1`), `type=0x03` (system / multimedia)
+- [ ] To be verified — on-device key-table combinations (`num > 1`), `type=0x03` (system / multimedia)
 
 ---
 

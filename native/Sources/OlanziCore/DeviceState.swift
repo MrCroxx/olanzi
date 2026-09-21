@@ -20,15 +20,41 @@ public struct KeyChange: Sendable {
     public init(index: Int, code: UInt8) { self.index = index; self.code = code }
 }
 
+public struct HostSaveResult: Equatable, Sendable {
+    public let requestID: UUID
+    public let error: String?
+    public init(requestID: UUID, error: String? = nil) {
+        self.requestID = requestID
+        self.error = error
+    }
+}
+
+public struct DeviceBattery: Equatable, Sendable {
+    public let millivolts: Int
+    public let percentage: Int?
+    public let isCharging: Bool?
+
+    public init(millivolts: Int, percentage: Int?, isCharging: Bool? = nil) {
+        self.millivolts = millivolts
+        self.percentage = percentage
+        self.isCharging = isCharging
+    }
+}
+
 public struct DeviceSnapshot: Equatable, Sendable {
     public var connected = false
     public var online: Bool? = nil
     public var demo = false
     public var keys: [KeyBinding] = []
     public var hostKeymap: HostKeymap? = nil
+    public var hostConfigurationMissing = false
+    public var hostSaveResult: HostSaveResult? = nil
     public var heartbeatEnabled = false
     public var lastHeartbeat: Date? = nil
     public var lastRead: Date? = nil
+    public var battery: DeviceBattery? = nil
+    public var batteryUpdatedAt: Date? = nil
+    public var batteryError: String? = nil
     public var error: String? = nil
     public var busy = false
     public var fn = FnStatus()

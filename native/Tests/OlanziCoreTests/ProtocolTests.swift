@@ -65,9 +65,37 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(try second.readKey(index: 0).code, 0x01)
         first.close(); second.close()
     }
+
+    func testTransportHeartbeatRequiresExplicitEnableAndCloseResetsIt() throws {
+        let transport = DemoHIDTransport()
+        try transport.open()
+        try transport.pump(for: 0)
+        XCTAssertFalse(transport.heartbeatEnabled)
+        XCTAssertNil(transport.lastHeartbeat)
+        transport.heartbeatEnabled = true
+        try transport.pump(for: 0)
+        XCTAssertNotNil(transport.lastHeartbeat)
+        transport.heartbeatEnabled = false
+        try transport.pump(for: 0)
+        XCTAssertNil(transport.lastHeartbeat)
+        transport.heartbeatEnabled = true
+        transport.close()
+        try transport.open()
+        try transport.pump(for: 0)
+        XCTAssertNil(transport.lastHeartbeat)
+        XCTAssertFalse(transport.heartbeatEnabled)
+
+        // 无需打开真实设备也可验证原生 transport 不继承旧开关。
+        let native = MacHIDTransport()
+        XCTAssertFalse(native.heartbeatEnabled)
+        native.heartbeatEnabled = true
+        native.close()
+        XCTAssertFalse(native.heartbeatEnabled)
+    }
 }
 
 private final class FakeTransport: DeviceTransport {
+    var heartbeatEnabled = false
     var keys = DeviceProtocol.defaultCodes.enumerated().map { KeyBinding(index: $0.offset, entries: [KeyEntry(code: $0.element)]) }
     var writes: [Int] = []
     var closed = false
@@ -194,9 +222,9 @@ final class NativeServiceTests: XCTestCase {
         XCTAssertEqual(transport.writes, [0])
     }
 
-    func testConnectQueryTimeoutClearsOldOnlineStateButKeepsHeartbeat() {
+    func testConnectQueryTimeoutClearsOldOnlineStateAndPausesHeartbeat() {
         let ready = expectation(description: "设备在线")
-        let unknown = expectation(description: "状态未知但心跳继续")
+        let unknown = expectation(description: "状态未知时暂停心跳，保留只读连接")
         ready.assertForOverFulfill = false
         unknown.assertForOverFulfill = false
         let transport = FakeTransport()
@@ -204,7 +232,7 @@ final class NativeServiceTests: XCTestCase {
         let service = NativeDeviceService(demo: true, transportFactory: { transport }) { state in
             if state.online == true, state.keys.count == 6 { ready.fulfill() }
             if !state.busy, state.error?.contains("在线查询超时") == true,
-               state.online == nil, state.connected, state.heartbeatEnabled { unknown.fulfill() }
+               state.online == nil, state.connected, !state.heartbeatEnabled { unknown.fulfill() }
         }
         service.start()
         wait(for: [ready], timeout: 2)

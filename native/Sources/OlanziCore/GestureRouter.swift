@@ -12,6 +12,7 @@ struct GestureRouter {
         case pressing(start: TimeInterval, second: Bool)
         case waiting(deadline: TimeInterval)
         case holding
+        case completed
     }
     private var configuration: HostKeymap?
     private var phases: [Int: Phase] = [:]
@@ -56,8 +57,14 @@ struct GestureRouter {
                 transitions += pulse(index: index, entries: control.press)
             case .pressing(let start, _) where time >= start + configuration.longPressThreshold:
                 if let action = control.longPress {
-                    phases[index] = .holding
-                    transitions.append(.begin(index: index, entries: action))
+                    if control.longPressBehavior == .tap {
+                        // 已完成的长按仍等待物理松开，重复报文和后续时钟不能重触发。
+                        phases[index] = .completed
+                        transitions += pulse(index: index, entries: action)
+                    } else {
+                        phases[index] = .holding
+                        transitions.append(.begin(index: index, entries: action))
+                    }
                 }
             default: break
             }
@@ -94,9 +101,11 @@ struct GestureRouter {
             case .holding:
                 phases.removeValue(forKey: event.index)
                 transitions.append(.end(index: event.index))
+            case .completed:
+                phases.removeValue(forKey: event.index)
             case .pressing(_, let second):
                 if second, let action = control.doublePress {
-                    // 第二次长按已由 advance 转入 holding，因此不会再补双击或单击。
+                    // 第二次长按已由 advance 转入 holding 或 completed，不会再补双击或单击。
                     phases.removeValue(forKey: event.index)
                     transitions += pulse(index: event.index, entries: action)
                 } else if control.doublePress != nil {

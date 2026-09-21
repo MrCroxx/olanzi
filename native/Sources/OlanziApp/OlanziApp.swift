@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import OlanziCore
 
 @main
 struct OlanziApp {
@@ -17,6 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private var window: NSWindow?
     private var stopping = false
+    private var menuLanguage: AppLanguage?
+    private var menuLocale: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -24,24 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "Olanzi")
         statusItem.button?.image?.isTemplate = true
-        statusItem.button?.toolTip = "Olanzi · 后台设备服务"
-        statusItem.button?.setAccessibilityLabel("Olanzi 后台设备服务")
         model.didChange = { [weak self] in self?.updateMenu() }
         updateMenu()
-        let mainMenu = NSMenu()
-        let appItem = NSMenuItem(); let appMenu = NSMenu()
-        let quit = NSMenuItem(title: "退出 Olanzi", action: #selector(quitApp), keyEquivalent: "q"); quit.target = self
-        appMenu.addItem(quit); appItem.submenu = appMenu; mainMenu.addItem(appItem)
-        let editItem = NSMenuItem(title: "编辑", action: nil, keyEquivalent: ""); let editMenu = NSMenu(title: "编辑")
-        for (title, action, key) in [("撤销", Selector(("undo:")), "z"), ("剪切", #selector(NSText.cut(_:)), "x"), ("复制", #selector(NSText.copy(_:)), "c"), ("粘贴", #selector(NSText.paste(_:)), "v"), ("全选", #selector(NSText.selectAll(_:)), "a")] {
-            editMenu.addItem(withTitle: title, action: action, keyEquivalent: key)
-        }
-        editItem.submenu = editMenu; mainMenu.addItem(editItem); NSApp.mainMenu = mainMenu
-        let windowItem = NSMenuItem(title: "窗口", action: nil, keyEquivalent: "")
-        let windowMenu = NSMenu(title: "窗口")
-        windowMenu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        windowMenu.addItem(withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowItem.submenu = windowMenu; mainMenu.addItem(windowItem); NSApp.windowsMenu = windowMenu
         model.start()
         let workspaceNotifications = NSWorkspace.shared.notificationCenter
         workspaceNotifications.addObserver(self, selector: #selector(systemWillSleep(_:)),
@@ -52,24 +39,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     func applicationDidBecomeActive(_ notification: Notification) {
         model?.refreshPermissions()
+        updateMenu()
+    }
+    private func updateMainMenu() {
+        let mainMenu = NSMenu()
+        let appItem = NSMenuItem(); let appMenu = NSMenu()
+        let settings = NSMenuItem(title: model.l("设置…"), action: #selector(showSettings), keyEquivalent: ",")
+        settings.target = self; appMenu.addItem(settings); appMenu.addItem(.separator())
+        let quit = NSMenuItem(title: model.l("退出 Olanzi"), action: #selector(quitApp), keyEquivalent: "q"); quit.target = self
+        appMenu.addItem(quit); appItem.submenu = appMenu; mainMenu.addItem(appItem)
+        let editItem = NSMenuItem(title: model.l("编辑"), action: nil, keyEquivalent: ""); let editMenu = NSMenu(title: model.l("编辑"))
+        for (title, action, key) in [("撤销", Selector(("undo:")), "z"), ("剪切", #selector(NSText.cut(_:)), "x"), ("复制", #selector(NSText.copy(_:)), "c"), ("粘贴", #selector(NSText.paste(_:)), "v"), ("全选", #selector(NSText.selectAll(_:)), "a")] {
+            editMenu.addItem(withTitle: model.l(title), action: action, keyEquivalent: key)
+        }
+        editItem.submenu = editMenu; mainMenu.addItem(editItem); NSApp.mainMenu = mainMenu
+        let windowItem = NSMenuItem(title: model.l("窗口"), action: nil, keyEquivalent: "")
+        let windowMenu = NSMenu(title: model.l("窗口"))
+        windowMenu.addItem(withTitle: model.l("关闭窗口"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowMenu.addItem(withTitle: model.l("最小化"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowItem.submenu = windowMenu; mainMenu.addItem(windowItem); NSApp.windowsMenu = windowMenu
     }
     private func updateMenu() {
         guard let model else { return }
+        if menuLanguage != model.language || menuLocale != model.localizer.locale.identifier {
+            menuLanguage = model.language
+            menuLocale = model.localizer.locale.identifier
+            updateMainMenu()
+        }
+        window?.title = model.demo ? model.l("Olanzi · 演示") : "Olanzi"
+        statusItem.button?.toolTip = model.l("Olanzi · 后台设备服务")
+        statusItem.button?.setAccessibilityLabel(model.l("Olanzi 后台设备服务"))
         let menu = NSMenu()
         let title = NSMenuItem(title: model.status, action: nil, keyEquivalent: ""); title.isEnabled = false; menu.addItem(title)
-        let heartbeat = NSMenuItem(title: model.device.heartbeatEnabled ? "后台运行中 · 心跳运行中" : "后台运行中 · 等待设备", action: nil, keyEquivalent: ""); heartbeat.isEnabled = false; menu.addItem(heartbeat)
+        let heartbeatTitle = model.device.heartbeatEnabled ? "心跳运行中" : model.device.connected ? "心跳已暂停" : "等待设备"
+        let heartbeat = NSMenuItem(title: model.lf("后台运行中 · %@", model.l(heartbeatTitle)), action: nil, keyEquivalent: ""); heartbeat.isEnabled = false; menu.addItem(heartbeat)
         menu.addItem(.separator())
-        let open = NSMenuItem(title: "打开 Olanzi…", action: #selector(showWindow), keyEquivalent: "o"); open.target = self; menu.addItem(open)
-        let connect = NSMenuItem(title: model.device.connected ? "断开设备" : "连接设备", action: #selector(toggleConnection), keyEquivalent: ""); connect.target = self; connect.isEnabled = !model.device.busy; menu.addItem(connect)
+        let open = NSMenuItem(title: model.l("打开 Olanzi…"), action: #selector(showWindow), keyEquivalent: "o"); open.target = self; menu.addItem(open)
+        let settings = NSMenuItem(title: model.l("设置…"), action: #selector(showSettings), keyEquivalent: ",")
+        settings.target = self; menu.addItem(settings)
+        let connect = NSMenuItem(title: model.l(model.device.connected ? "断开设备" : "连接设备"), action: #selector(toggleConnection), keyEquivalent: ""); connect.target = self; connect.isEnabled = !model.device.busy; menu.addItem(connect)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "退出 Olanzi", action: #selector(quitApp), keyEquivalent: "q"); quit.target = self; menu.addItem(quit)
+        let quit = NSMenuItem(title: model.l("退出 Olanzi"), action: #selector(quitApp), keyEquivalent: "q"); quit.target = self; menu.addItem(quit)
         statusItem.menu = menu
+    }
+    @objc private func showSettings() {
+        model.page = 3
+        showWindow()
     }
     @objc private func showWindow() {
         if window == nil {
             let created = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 830),
                                    styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            created.title = model.demo ? "Olanzi · 演示" : "Olanzi"
+            created.title = model.demo ? model.l("Olanzi · 演示") : "Olanzi"
             created.titlebarAppearsTransparent = true
             created.backgroundColor = NSColor(calibratedWhite: 0.115, alpha: 1)
             created.contentView = NSHostingView(rootView: ContentView(model: model))

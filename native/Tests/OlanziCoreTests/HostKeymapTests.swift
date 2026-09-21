@@ -82,4 +82,41 @@ final class HostKeymapTests: XCTestCase {
         XCTAssertThrowsError(try HostKeymap.decode(data: JSONEncoder().encode(map)))
         XCTAssertThrowsError(try HostKeymap.decode(data: Data(repeating: 32, count: 32769)))
     }
+    func testLegacyControlWithoutLongPressBehaviorDefaultsToHold() throws {
+        var map = try keymap()
+        map.controls[0].longPress = [KeyEntry(code: 1)]
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(map)) as? [String: Any])
+        var controls = try XCTUnwrap(object["controls"] as? [[String: Any]])
+        for index in controls.indices { controls[index].removeValue(forKey: "longPressBehavior") }
+        object["controls"] = controls
+        let decoded = try HostKeymap.decode(data: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(decoded, map)
+        XCTAssertTrue(decoded.controls.allSatisfy { $0.longPressBehavior == .hold })
+    }
+
+    func testLongPressBehaviorSurvivesHostAndProfileRoundTrips() throws {
+        var map = try keymap()
+        map.controls[0].longPress = [KeyEntry(code: 0xE3), KeyEntry(code: 0x06)]
+        map.controls[0].longPressBehavior = .tap
+        map.controls[1].longPress = [KeyEntry(code: 1)]
+        XCTAssertEqual(try HostKeymap.decode(data: JSONEncoder().encode(map)), map)
+        let profile = HostProfile(name: "长按短按一次", keymap: map)
+        XCTAssertEqual(try HostProfile.decode(data: JSONEncoder().encode(profile)), profile)
+        XCTAssertEqual(profile.keymap.controls[1].longPressBehavior, .hold)
+    }
+
+    func testUnknownBehaviorAndRotaryTapModeAreRejected() throws {
+        let map = try keymap()
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(map)) as? [String: Any])
+        var controls = try XCTUnwrap(object["controls"] as? [[String: Any]])
+        controls[0]["longPressBehavior"] = "repeat"
+        object["controls"] = controls
+        XCTAssertThrowsError(try HostKeymap.decode(data: JSONSerialization.data(withJSONObject: object)))
+        for index in [4, 5] {
+            var invalid = map
+            invalid.controls[index].longPressBehavior = .tap
+            XCTAssertThrowsError(try invalid.validate()) { XCTAssertEqual($0 as? HostKeymapError, .unsupportedGesture) }
+        }
+    }
+
 }

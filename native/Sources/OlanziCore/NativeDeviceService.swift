@@ -5,7 +5,7 @@ public final class NativeDeviceService: @unchecked Sendable {
     private enum Job {
         case connect, disconnect, refresh, apply([KeyChange], [KeyBinding])
         case permissions, checkPermissions
-        case applyHostKeymap(HostKeymap)
+        case applyHostKeymap(HostKeymap, UUID)
         case suspendForSleep, resumeAfterWake(UInt64)
         case stop(@Sendable () -> Void)
     }
@@ -24,7 +24,8 @@ public final class NativeDeviceService: @unchecked Sendable {
     private let bridgeFactory: () -> VendorKeyBridge
     private let loadHostKeymap: () throws -> HostKeymap?
     private let saveHostKeymap: (HostKeymap) throws -> Void
-    private enum ConfigurationState { case notLoaded, awaitingDevice, ready, blocked }
+    private let batteryClock: () -> TimeInterval
+    private enum ConfigurationState { case notLoaded, missing, ready, invalidFile }
     private var configurationState = ConfigurationState.notLoaded
     private var hostConfigurationError: String?
     // 以下成员仅由工作线程读写。
@@ -36,6 +37,7 @@ public final class NativeDeviceService: @unchecked Sendable {
     private var wantsConnection = true
     private var nextConnect: TimeInterval = 0
     private var nextCheck: TimeInterval = 0
+    private var nextBatteryCheck: TimeInterval = 0
 
     public convenience init(demo: Bool = false,
                             onChange: @escaping @Sendable (DeviceSnapshot) -> Void) {
@@ -49,12 +51,14 @@ public final class NativeDeviceService: @unchecked Sendable {
          loadHostKeymap: @escaping () throws -> HostKeymap? = { try HostKeymapStore().load() },
          saveHostKeymap: @escaping (HostKeymap) throws -> Void = { try HostKeymapStore().save($0) },
          bridgeFactory: @escaping () -> VendorKeyBridge = { VendorKeyBridge() },
+         batteryClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          onChange: @escaping @Sendable (DeviceSnapshot) -> Void) {
         self.demo = demo
         self.transportFactory = transportFactory
         self.loadHostKeymap = loadHostKeymap
         self.saveHostKeymap = saveHostKeymap
         self.bridgeFactory = bridgeFactory
+        self.batteryClock = batteryClock
         self.onChange = onChange
     }
 
@@ -110,7 +114,9 @@ public final class NativeDeviceService: @unchecked Sendable {
     public func refresh() { enqueue(.refresh) }
     public func apply(changes: [KeyChange], expected: [KeyBinding]) { enqueue(.apply(changes, expected)) }
     /// 普通编辑只保存并激活本机动作，不写设备可编程按键表。
-    public func applyHostKeymap(_ configuration: HostKeymap) { enqueue(.applyHostKeymap(configuration)) }
+    public func applyHostKeymap(_ configuration: HostKeymap, requestID: UUID = UUID()) {
+        enqueue(.applyHostKeymap(configuration, requestID))
+    }
     public func requestFnPermissions() { enqueue(.permissions) }
     public func checkFnPermissions() { enqueue(.checkPermissions) }
 
@@ -171,8 +177,14 @@ public final class NativeDeviceService: @unchecked Sendable {
                 try refreshKeys()
             case .apply(let changes, let expected):
                 try applyKeys(changes, expected: expected)
-            case .applyHostKeymap(let configuration):
-                try applyHostConfiguration(configuration)
+            case .applyHostKeymap(let configuration, let requestID):
+                do {
+                    try applyHostConfiguration(configuration)
+                    state.hostSaveResult = HostSaveResult(requestID: requestID)
+                } catch {
+                    state.hostSaveResult = HostSaveResult(requestID: requestID, error: error.localizedDescription)
+                    throw error
+                }
             case .suspendForSleep:
                 disconnectDevice()
             case .resumeAfterWake(let generation):
@@ -218,11 +230,12 @@ public final class NativeDeviceService: @unchecked Sendable {
             nextCheck = now + 2
             do { try checkOnline() }
             catch {
-                // 查询超时不代表接收器被拔掉，保留厂商通道继续发送心跳。
+                // 查询超时保留只读厂商通道；暂停心跳，避免在无法转发时继续接管输入。
                 state.online = nil
                 state.error = error.localizedDescription
             }
         }
+        refreshBatteryIfDue()
         state.lastHeartbeat = transport?.lastHeartbeat
         synchronizeFn()
         if let events = transport?.takeKeyEvents() {
@@ -237,7 +250,7 @@ public final class NativeDeviceService: @unchecked Sendable {
         if !state.connected {
             try transport.open()
             state.connected = true
-            state.heartbeatEnabled = true
+            nextBatteryCheck = 0
             if !demo && backgroundActivity == nil {
                 // 防止隐藏窗口后的 App Nap 延后心跳与输入处理，但允许 Mac 正常睡眠。
                 backgroundActivity = ProcessInfo.processInfo.beginActivity(
@@ -253,13 +266,40 @@ public final class NativeDeviceService: @unchecked Sendable {
 
     private func checkOnline() throws {
         let wasOnline = state.online
-        state.online = nil
-        state.online = try transport?.queryOnline()
+        // 查询中的回调继续使用上一次已确认状态，不能每两秒取消一次按住动作。
+        do { state.online = try transport?.queryOnline() }
+        catch { state.online = nil; throw error }
         if state.online == false {
+            clearBattery()
             state.error = "接收器已连接，但 Vibe Key 本体离线，请短按电源键唤醒。"
         } else if state.online == true && (wasOnline != true || state.keys.isEmpty) {
+            if wasOnline != true { nextBatteryCheck = 0 }
             try refreshKeys()
         }
+    }
+
+    private func refreshBatteryIfDue() {
+        guard state.connected, state.online == true, !isInputSuspended, let transport else { return }
+        let now = batteryClock()
+        guard now >= nextBatteryCheck else { return }
+        // 电量是低频遥测，失败也等下个周期；查询沿用 transport 的输入和心跳泵送。
+        nextBatteryCheck = now + 20
+        do {
+            let battery = try transport.readBattery()
+            guard !isInputSuspended else { return }
+            state.battery = battery
+            state.batteryUpdatedAt = Date()
+            state.batteryError = nil
+        } catch {
+            clearBattery()
+            state.batteryError = error.localizedDescription
+        }
+    }
+
+    private func clearBattery() {
+        state.battery = nil
+        state.batteryUpdatedAt = nil
+        state.batteryError = nil
     }
 
     private func refreshKeys() throws {
@@ -272,7 +312,6 @@ public final class NativeDeviceService: @unchecked Sendable {
             state.online = true
             state.lastRead = Date()
             state.error = nil
-            seedConfigurationIfNeeded()
         } catch {
             state.online = nil
             throw error
@@ -320,6 +359,7 @@ public final class NativeDeviceService: @unchecked Sendable {
     }
 
     private func disconnectDevice() {
+        transport?.heartbeatEnabled = false
         bridge?.synchronize(configuration: state.hostKeymap, connected: false, online: nil)
         bridge?.close()
         state.fn = bridge?.status ?? FnStatus()
@@ -331,6 +371,8 @@ public final class NativeDeviceService: @unchecked Sendable {
         state.connected = false
         state.online = nil
         state.keys = []
+        clearBattery()
+        nextBatteryCheck = 0
         state.lastRead = nil
         state.lastHeartbeat = nil
         state.heartbeatEnabled = false
@@ -338,16 +380,26 @@ public final class NativeDeviceService: @unchecked Sendable {
     }
 
     private func synchronizeFn() {
-        // 运行时只使用成功持久化的本机动作；设备回读仅用于首次初始化。
+        // 运行时只使用成功持久化的本机动作；设备回读始终与本机配置独立。
         let enabled = state.connected && !isInputSuspended && state.hostKeymap != nil
         guard let bridge = bridge else {
             state.fn = FnStatus(enabled: enabled)
+            updateHeartbeat()
             return
         }
         bridge.synchronize(configuration: state.hostKeymap, connected: state.connected && !isInputSuspended,
                            online: state.online)
         bridge.pump()
         state.fn = bridge.status
+        updateHeartbeat()
+    }
+
+    private func updateHeartbeat() {
+        let ready = demo ? state.hostKeymap != nil && state.online == true : bridge?.status.active == true
+        let enabled = state.connected && !isInputSuspended && ready
+        transport?.heartbeatEnabled = enabled
+        state.heartbeatEnabled = enabled
+        state.lastHeartbeat = enabled ? transport?.lastHeartbeat : nil
     }
 
     private var isInputSuspended: Bool {
@@ -359,15 +411,18 @@ public final class NativeDeviceService: @unchecked Sendable {
     private func suspendInputIfNeeded() {
         if isInputSuspended {
             bridge?.synchronize(configuration: state.hostKeymap, connected: false, online: nil)
+            updateHeartbeat()
         }
     }
 
     private func receiveInput(_ event: VendorKeyEvent) {
         guard !isInputSuspended else {
             bridge?.synchronize(configuration: state.hostKeymap, connected: false, online: nil)
+            updateHeartbeat()
             return
         }
         bridge?.receive(event)
+        updateHeartbeat()
     }
 
     private func pumpInput() {
@@ -376,49 +431,43 @@ public final class NativeDeviceService: @unchecked Sendable {
         } else {
             bridge?.pump()
         }
+        // 查询等待中的每次 pump 也复查，撤权或睡眠后不能再发送下一次心跳。
+        updateHeartbeat()
     }
 
     private func loadConfigurationOnce() {
         guard configurationState == .notLoaded else { return }
-        if demo { configurationState = .awaitingDevice; return }
+        if demo {
+            state.hostKeymap = .defaultKeymap
+            configurationState = .ready
+            return
+        }
         do {
             if let saved = try loadHostKeymap() {
                 try saved.validate()
                 state.hostKeymap = saved
                 configurationState = .ready
             } else {
-                configurationState = .awaitingDevice
+                configurationState = .missing
+                state.hostConfigurationMissing = true
             }
         } catch {
-            configurationState = .blocked
+            configurationState = .invalidFile
             hostConfigurationError = "本机动作配置读取失败，已保留原文件且停止动作执行：" + error.localizedDescription
-        }
-    }
-
-    private func seedConfigurationIfNeeded() {
-        guard configurationState == .awaitingDevice else { return }
-        // 首次写入失败后停在明确错误状态，不在心跳/重连时反复覆盖或悄悄换默认值。
-        configurationState = .blocked
-        do {
-            let initial = try HostKeymap.fromDeviceBindings(state.keys)
-            if !demo { try saveHostKeymap(initial) }
-            state.hostKeymap = initial
-            configurationState = .ready
-            hostConfigurationError = nil
-        } catch {
-            hostConfigurationError = "无法从设备初始化本机动作配置，配置尚未激活：" + error.localizedDescription
         }
     }
 
     private func applyHostConfiguration(_ configuration: HostKeymap) throws {
         do {
-            guard configurationState == .ready, state.hostKeymap != nil else {
-                throw DeviceProtocolError.message("本机动作配置尚未初始化；请先连接设备，或修复已报告的配置文件错误。")
+            guard configurationState != .notLoaded, configurationState != .invalidFile else {
+                throw DeviceProtocolError.message("请先修复已报告的本机配置文件错误并重新启动；原文件不会覆盖。")
             }
             try configuration.validate()
             // 保存成功才更新快照并切换运行时；失败时继续使用完整的旧配置。
             if !demo { try saveHostKeymap(configuration) }
             state.hostKeymap = configuration
+            state.hostConfigurationMissing = false
+            configurationState = .ready
             hostConfigurationError = nil
             state.error = nil
             synchronizeFn()

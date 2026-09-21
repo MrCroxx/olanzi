@@ -20,23 +20,48 @@ public enum HostKeymapError: LocalizedError, Equatable {
     }
 }
 
+public enum LongPressBehavior: String, Codable, CaseIterable, Identifiable, Sendable {
+    case hold, tap
+    public var id: Self { self }
+}
+
 public struct ControlActionMap: Codable, Equatable, Sendable {
     public var index: Int
     public var press: [KeyEntry]
     public var doublePress: [KeyEntry]?
     public var longPress: [KeyEntry]?
+    public var longPressBehavior: LongPressBehavior
 
     public init(index: Int, press: [KeyEntry], doublePress: [KeyEntry]? = nil,
-                longPress: [KeyEntry]? = nil) {
+                longPress: [KeyEntry]? = nil, longPressBehavior: LongPressBehavior = .hold) {
         self.index = index
         self.press = press
         self.doublePress = doublePress
         self.longPress = longPress
+        self.longPressBehavior = longPressBehavior
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case index, press, doublePress, longPress, longPressBehavior
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        index = try values.decode(Int.self, forKey: .index)
+        press = try values.decode([KeyEntry].self, forKey: .press)
+        doublePress = try values.decodeIfPresent([KeyEntry].self, forKey: .doublePress)
+        longPress = try values.decodeIfPresent([KeyEntry].self, forKey: .longPress)
+        // 旧配置没有该字段，其长按动作一直保持到物理松开。
+        longPressBehavior = try values.decodeIfPresent(LongPressBehavior.self, forKey: .longPressBehavior) ?? .hold
     }
 }
 
 public struct HostKeymap: Codable, Equatable, Sendable {
     public static let maximumJSONBytes = 32 * 1024
+    /// 首次编辑使用独立本机草稿，不依赖设备回读；由用户显式保存后才激活。
+    public static let defaultKeymap = HostKeymap(controls: DeviceProtocol.defaultCodes.enumerated().map {
+        ControlActionMap(index: $0.offset, press: [KeyEntry(code: $0.element)])
+    })
     public var version: Int = 1
     public var controls: [ControlActionMap]
     public var doublePressWindow: TimeInterval
@@ -66,7 +91,7 @@ public struct HostKeymap: Codable, Equatable, Sendable {
               (0.15...0.5).contains(doublePressWindow), (0.3...2).contains(longPressThreshold),
               longPressThreshold > doublePressWindow else { throw HostKeymapError.invalidTiming }
         for control in controls {
-            guard control.index < 4 || (control.doublePress == nil && control.longPress == nil) else {
+            guard control.index < 4 || (control.doublePress == nil && control.longPress == nil && control.longPressBehavior == .hold) else {
                 throw HostKeymapError.unsupportedGesture
             }
             try MacKeyEmitter.validate(entries: control.press)

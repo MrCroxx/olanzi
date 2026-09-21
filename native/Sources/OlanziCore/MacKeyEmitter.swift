@@ -26,6 +26,8 @@ public enum MacKeyEmitterError: LocalizedError, Equatable {
 public final class MacKeyEmitter {
     private static let logger = Logger(subsystem: "com.mrcroxx.olanzi", category: "emitter")
     private let hardwareFlags: () -> CGEventFlags
+    private let physicalFn: (() throws -> Bool)?
+    private let physicalModifiers: (() throws -> CGEventFlags)?
     private let sourceFactory: () -> CGEventSource?
     private let eventFactory: (CGEventSource, CGKeyCode, Bool) -> CGEvent?
     private let post: (CGEvent) throws -> Void
@@ -35,6 +37,9 @@ public final class MacKeyEmitter {
 
     public init() {
         hardwareFlags = { CGEventSource.flagsState(.hidSystemState) }
+        let fnMonitor = PhysicalFnMonitor()
+        physicalFn = nil
+        physicalModifiers = { try fnMonitor.modifierFlags() }
         sourceFactory = { CGEventSource(stateID: .privateState) }
         eventFactory = { CGEvent(keyboardEventSource: $0, virtualKey: $1, keyDown: $2) }
         post = { $0.post(tap: .cghidEventTap) }
@@ -42,14 +47,24 @@ public final class MacKeyEmitter {
 
     // 测试只替换事件发布与硬件旗标，不向桌面发键，不读取其他键盘内容。
     init(hardwareFlags: @escaping () -> CGEventFlags,
+         physicalFn: (() throws -> Bool)? = nil,
+         physicalModifiers: (() throws -> CGEventFlags)? = nil,
          sourceFactory: @escaping () -> CGEventSource? = { CGEventSource(stateID: .privateState) },
          eventFactory: @escaping (CGEventSource, CGKeyCode, Bool) -> CGEvent? = {
              CGEvent(keyboardEventSource: $0, virtualKey: $1, keyDown: $2)
          }, post: @escaping (CGEvent) throws -> Void) {
         self.hardwareFlags = hardwareFlags
+        self.physicalFn = physicalFn
+        self.physicalModifiers = physicalModifiers
         self.sourceFactory = sourceFactory
         self.eventFactory = eventFactory
         self.post = post
+    }
+
+    /// 在桥接就绪时提前监听，不能等用户按下 AU05 后才开始记录真实修饰键。
+    func prepareFnMonitoring() throws {
+        if let physicalModifiers { _ = try physicalModifiers() }
+        else if let physicalFn { _ = try physicalFn() }
     }
 
     /// heldModifiers 必须包含本次以外仍按住的控件；up 时也不能丢弃其他控件的修饰键。
@@ -64,8 +79,18 @@ public final class MacKeyEmitter {
         if source == nil { source = sourceFactory() }
         guard let source else { throw MacKeyEmitterError.sourceUnavailable }
 
-        // 私有源与真实 HID 源分开，不能从合成事件自己的源状态推导真实 Fn 松开。
-        let physical = hardwareFlags()
+        // HID 汇总状态也包含本 App 合成的 Cmd/Shift/Option/Control/Fn 及左右侧位。
+        // 真实修饰键由独立监听重建；本 App 的按住状态只由 remaining/heldModifiers 合并。
+        var physical = hardwareFlags()
+        if let physicalModifiers {
+            let modifiers = try physicalModifiers()
+            physical.subtract(PhysicalModifierState.managedMask)
+            physical.formUnion(modifiers.intersection(PhysicalModifierState.managedMask))
+        } else if let physicalFn {
+            let pressed = try physicalFn()
+            physical.remove(.maskSecondaryFn)
+            if pressed { physical.insert(.maskSecondaryFn) }
+        }
         let hardwareCaps = physical.contains(.maskAlphaShift)
         if lastHardwareCaps == nil || lastHardwareCaps != hardwareCaps { capsLock = hardwareCaps }
         lastHardwareCaps = hardwareCaps
@@ -87,6 +112,10 @@ public final class MacKeyEmitter {
                   let event = eventFactory(source, virtualKey, pressed) else {
                 throw MacKeyEmitterError.eventUnavailable(code)
             }
+            // F1–F20 的按下和松开自带 function 类别位，与物理 Fn 是否按住无关。
+            // 按虚拟键分类，让 Print Screen 等映射到 F13–F15 的别名保持一致；
+            // 不加入 modifiers/remaining，避免把功能键变成持续按住的 Fn。
+            if Self.functionVirtualKeys.contains(virtualKey) { flags.insert(.maskSecondaryFn) }
             event.type = (!modifier.isEmpty || code == 0x39) ? .flagsChanged : pressed ? .keyDown : .keyUp
             event.flags = flags
             event.setIntegerValueField(.keyboardEventAutorepeat, value: 0)
@@ -102,6 +131,11 @@ public final class MacKeyEmitter {
     }
 
     public static func validate(entries: [KeyEntry]) throws { _ = try validatedCodes(entries) }
+
+    private static let functionVirtualKeys: Set<CGKeyCode> = [
+        122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111,
+        105, 107, 113, 106, 64, 79, 80, 90
+    ]
 
     /// Caps Lock 不属于持续按住的修饰键；其锁定状态由系统旗标和发射器共同维护。
     public static func modifierFlags(for entries: [KeyEntry]) -> CGEventFlags {

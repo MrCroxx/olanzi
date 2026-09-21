@@ -27,6 +27,7 @@ public enum DeviceProtocol {
     public static let defaultCodes: [UInt8] = [0x01, 0x28, 0x29, 0x46, 0x4F, 0x2A]
     public static let heartbeat: [UInt8] = [0x06, 0x01, 0x23, 0x00, 0x01]
     public static let onlineRequest: [UInt8] = [0x06, 0x03, 0x0A, 0x01]
+    public static let batteryRequest: [UInt8] = [0x01, 0x01, 0x02, 0x01]
     private static let key: [UInt32] = [0xCAA5BACA, 0xBC2A8A6D, 0xCA5A9EBA, 0x9BB88BCA]
     private static let delta: UInt32 = 0x9E3779B9
 
@@ -117,5 +118,21 @@ public enum DeviceProtocol {
     public static func parseOnline(_ frame: [UInt8]) throws -> Bool {
         guard matchesOnlineReply(frame), frame[4] <= 1 else { throw DeviceProtocolError.invalidFrame }
         return frame[4] == 1
+    }
+
+    public static func matchesBatteryReply(_ frame: [UInt8]) -> Bool {
+        frame.count >= 4 && frame[0] & 0x1F == 1 && Array(frame[1...3]) == [1, 2, 0x11]
+    }
+
+    /// Studio 的解析器将电压、电量分别读作小端 UInt16，充电状态位于整帧偏移 10。
+    /// 只接受确认过的范围；不把未知值夹成满电，也不猜测其余状态位。
+    public static func parseBattery(_ frame: [UInt8]) throws -> DeviceBattery {
+        guard matchesBatteryReply(frame), frame.count >= 8 else { throw DeviceProtocolError.invalidFrame }
+        let millivolts = Int(frame[4]) | Int(frame[5]) << 8
+        guard millivolts != 0xFFFF else { throw DeviceProtocolError.invalidFrame }
+        let level = Int(frame[6]) | Int(frame[7]) << 8
+        let charging: Bool? = frame.count > 10 && frame[10] <= 1 ? frame[10] == 1 : nil
+        return DeviceBattery(millivolts: millivolts, percentage: level <= 100 ? level : nil,
+                             isCharging: charging)
     }
 }

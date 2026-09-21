@@ -157,6 +157,18 @@ The following are the ones **actually verified** on the Vibe Key:
 | Motor strength | `01 06 40 01` | all 0 |
 | Knob switch | `01 01 34 01` | all 0 |
 
+### Battery Reply Fields
+
+[CONFIRMED] The read-only request is `01 01 02 01`, with reply prefix `81 01 02 11`. Payload offsets below start at plaintext frame byte 4. Studio’s `kwdm.dylib` battery-response handler reads voltage and battery as little-endian 16-bit fields, not individual bytes.
+
+| Payload offset | Plaintext frame offset | Field | Sample value |
+|---|---|---|---|
+| 0–1 | 4–5 | `voltage`, little-endian millivolts | `f6 0c` = 3318 mV |
+| 2–3 | 6–7 | `battery`, little-endian percentage | `0a 00` = 10% |
+| 6 | 10 | `charging`, 0 = not charging, 1 = charging | `01` = charging |
+
+The 23:25:12 sample began `81 01 02 11 f6 0c 0a 00 c8 01 01 00 ...`, with the device online. [CONFIRMED] Studio forwards the `battery` integer directly to its battery icon, clamps the upper bound to 100, and selects levels at 10/25/50/75. The [parser and UI disassembly](evidence/2026-09-21-battery-disassembly.log) establishes the percentage scale; it is not estimated from voltage. Olanzi treats percentages outside 0–100 and charging values other than 0/1 as unknown. See [05 §9.10](05-verification-log.md#910-read-only-battery-status-and-main-window-display).
+
 ### Write Commands (⚠️ located but not yet measured)
 
 | Name | Report bytes |

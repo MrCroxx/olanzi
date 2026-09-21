@@ -15,6 +15,12 @@ public enum InputPermission: Equatable, Sendable {
         return URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")!
     }
 
+    /// 检查当前能力，不打开设备或采集按键；界面轮询与工作线程使用同一判据。
+    public static func currentStatus() -> FnStatus {
+        let access = NativeFnBackend().permissions()
+        return FnStatus(inputPermission: access.input, accessibilityPermission: access.accessibility)
+    }
+
     @MainActor public func requestAccess() {
         // 在前台按钮的调用栈中请求，必须先于打开系统设置，不能绕行设备任务队列。
         switch self {
@@ -109,36 +115,66 @@ final class NativeFnBackend: FnBackend {
     var callbackError: String?
     private var device: IOHIDDevice?
     private var source: CGEventSource?
+    private let physicalFn = PhysicalFnMonitor()
     private var runLoop: CFRunLoop?
     private var buffer: UnsafeMutablePointer<UInt8>?
     private var onReport: ((Int, [UInt8]) -> Void)?
     private var onLost: ((String) -> Void)?
     private var scheduled = false
     private static let bufferSize = 64
+    private static let permissionLog = Logger(subsystem: "com.mrcroxx.olanzi", category: "permissions")
+    private static let permissionLogLock = NSLock()
+    private static var previousPermissionDiagnostic: String?
     private let checkInput: () -> IOHIDAccessType
+    private let checkListening: () -> Bool
     private let checkPosting: () -> Bool
     private let checkAccessibility: () -> Bool
+    private let probeListening: () -> Bool
 
     init(checkInput: @escaping () -> IOHIDAccessType = { IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) },
+         checkListening: @escaping () -> Bool = { CGPreflightListenEventAccess() },
          checkPosting: @escaping () -> Bool = { CGPreflightPostEventAccess() },
-         checkAccessibility: @escaping () -> Bool = { AXIsProcessTrusted() }) {
+         checkAccessibility: @escaping () -> Bool = { AXIsProcessTrusted() },
+         probeListening: @escaping () -> Bool = { NativeFnBackend.canListenToKeyboard() }) {
         self.checkInput = checkInput
+        self.checkListening = checkListening
         self.checkPosting = checkPosting
         self.checkAccessibility = checkAccessibility
+        self.probeListening = probeListening
     }
 
     deinit { try? close() }
 
+    /// 预检可能仍返回拒绝，但当前进程已经可以监听；直接验证这一能力。
+    /// 仅请求键盘事件，避免鼠标监听成功掩盖键盘权限不足。
+    private static func canListenToKeyboard() -> Bool {
+        let mask = (CGEventMask(1) << CGEventType.keyDown.rawValue)
+            | (CGEventMask(1) << CGEventType.keyUp.rawValue)
+        guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap,
+                                         options: .listenOnly, eventsOfInterest: mask,
+                                         callback: { _, _, event, _ in Unmanaged.passUnretained(event) },
+                                         userInfo: nil) else { return false }
+        // 不加入 run loop，因此回调不会执行；离开本作用域即撤销并释放探针。
+        defer { CFMachPortInvalidate(tap) }
+        return CFMachPortIsValid(tap) && CGEvent.tapIsEnabled(tap: tap)
+    }
+
     func permissions() -> (input: Bool?, accessibility: Bool) {
-        let input: Bool?
-        switch checkInput() {
-        case kIOHIDAccessTypeGranted: input = true
-        case kIOHIDAccessTypeDenied: input = false
-        default: input = nil
-        }
-        // AXIsProcessTrusted 在未授权时会影响系统权限记录，不能当成无副作用预检。
-        // 先检查事件发送权限，避免辅助功能拒绝记录挡住后续输入监控的注册请求。
-        return (input, checkPosting() && checkAccessibility())
+        let hid = checkInput()
+        let listening = checkListening()
+        let probe = listening ? nil : probeListening()
+        let input = listening || probe == true
+        // 与 Digger 一样独立读取 AX；任何事件预检都不能阻止另一项权限刷新。
+        let posting = checkPosting()
+        let accessibility = checkAccessibility()
+        // 只记录当前进程的权限结果，不读取键盘内容；跨界面与工作线程仅在状态改变时记录。
+        let diagnostic = "HID=\(hid.rawValue), CGListen=\(listening), ListenProbe=\(probe.map(String.init) ?? "skipped"), CGPost=\(posting), AX=\(accessibility)"
+        Self.permissionLogLock.lock()
+        let changed = Self.previousPermissionDiagnostic != diagnostic
+        Self.previousPermissionDiagnostic = diagnostic
+        Self.permissionLogLock.unlock()
+        if changed { Self.permissionLog.debug("权限预检：\(diagnostic, privacy: .public)") }
+        return (input, accessibility)
     }
 
     func requestPermissions() {
@@ -206,6 +242,7 @@ final class NativeFnBackend: FnBackend {
         self.onLost = onLost
         callbackError = nil
         do {
+            _ = try physicalFn.isPressed()
             // 独立源保留自己的事件状态；投递层级由 postFn 单独选择。
             guard let source = CGEventSource(stateID: .privateState) else {
                 throw FnFailure(message: "无法创建 Mac Fn 事件源。")
@@ -265,7 +302,10 @@ final class NativeFnBackend: FnBackend {
 
     func postFn(pressed: Bool) throws {
         guard let source else { throw FnFailure(message: "Mac Fn 事件源尚未就绪。") }
-        let flags = FnReport.flags(hardware: CGEventSource.flagsState(.hidSystemState), pressed: pressed)
+        var hardware = CGEventSource.flagsState(.hidSystemState)
+        hardware.remove(.maskSecondaryFn)
+        if try physicalFn.isPressed() { hardware.insert(.maskSecondaryFn) }
+        let flags = FnReport.flags(hardware: hardware, pressed: pressed)
         guard let event = CGEvent(keyboardEventSource: source, virtualKey: 63, keyDown: pressed) else {
             throw FnFailure(message: "无法创建 Mac Fn 事件。")
         }

@@ -15,6 +15,7 @@ final class VendorKeyBridge {
     private var fault: String?
     private let permissions: () -> (input: Bool?, accessibility: Bool)
     private let request: () -> Void
+    private let prepare: () throws -> Void
     private let emit: ([KeyEntry], Bool, CGEventFlags) throws -> Void
     private let now: () -> TimeInterval
     private let log = Logger(subsystem: "com.mrcroxx.olanzi", category: "device-input")
@@ -23,15 +24,18 @@ final class VendorKeyBridge {
         let access = NativeFnBackend()
         let emitter = MacKeyEmitter()
         self.init(permissions: { access.permissions() }, request: { access.requestPermissions() },
+                  prepare: { try emitter.prepareFnMonitoring() },
                   emit: { try emitter.emit(entries: $0, pressed: $1, heldModifiers: $2) })
     }
 
     init(permissions: @escaping () -> (input: Bool?, accessibility: Bool),
          request: @escaping () -> Void = {},
+         prepare: @escaping () throws -> Void = {},
          now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          emit: @escaping ([KeyEntry], Bool, CGEventFlags) throws -> Void) {
         self.permissions = permissions
         self.request = request
+        self.prepare = prepare
         self.now = now
         self.emit = emit
     }
@@ -70,16 +74,25 @@ final class VendorKeyBridge {
         let ready = status.enabled && connected && online == true
         let granted = status.missingPermissions.isEmpty
         status.active = ready && granted && pendingReleases.isEmpty
+        var preparationError: String?
+        if status.active {
+            do { try prepare() }
+            catch {
+                status.active = false
+                preparationError = error.localizedDescription
+            }
+        }
         if !status.active {
             _ = router.cancel(quarantine: connected)
             releaseAll()
         } else {
             process(router.advance(to: now()))
         }
-        if ready && !granted {
-            status.error = "按键转换需要" + status.missingPermissions.map(\.title).joined(separator: "与") + "权限。"
+        // 权限提示独立于设备和配置状态，初始化失败时也必须让用户看到授权入口。
+        if !granted {
+            status.error = "权限不足：按键转换需要" + status.missingPermissions.map(\.title).joined(separator: "与") + "权限，心跳已暂停。"
         } else {
-            status.error = fault
+            status.error = preparationError ?? fault
         }
         updatePressed()
     }

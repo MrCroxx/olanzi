@@ -54,33 +54,71 @@ final class FnTests: XCTestCase {
     private let press: [UInt8] = [0, 0, 1, 0, 0, 0, 0, 0]
     private let release = [UInt8](repeating: 0, count: 8)
 
-    func testUnapprovedPermissionPollingNeverTouchesAccessibilityTrustCheck() {
-        var trustChecks = 0
-        let backend = NativeFnBackend(checkInput: { kIOHIDAccessTypeUnknown }, checkPosting: { false },
-                                      checkAccessibility: { trustChecks += 1; return false })
-        // 模拟后台不断刷新状态，不得在用户点击授权前创建辅助功能拒绝记录。
-        for _ in 0..<3 {
-            let access = backend.permissions()
-            XCTAssertNil(access.input)
-            XCTAssertFalse(access.accessibility)
-        }
-        XCTAssertEqual(trustChecks, 0)
-    }
-
-    func testPermissionPollingRechecksTrustAfterPostingGrantAndRevocation() {
-        var postingGranted = false
+    func testDeniedPreflightsDoNotBlockIndependentAccessibilityRefresh() {
         var trusted = false
         var trustChecks = 0
-        let backend = NativeFnBackend(checkInput: { kIOHIDAccessTypeGranted }, checkPosting: { postingGranted },
-                                      checkAccessibility: { trustChecks += 1; return trusted })
-        XCTAssertFalse(backend.permissions().accessibility)
-        postingGranted = true
+        let backend = NativeFnBackend(checkInput: { kIOHIDAccessTypeUnknown },
+                                      checkListening: { false }, checkPosting: { false },
+                                      checkAccessibility: { trustChecks += 1; return trusted },
+                                      probeListening: { false })
+        XCTAssertEqual(backend.permissions().input, false)
         XCTAssertFalse(backend.permissions().accessibility)
         trusted = true
         XCTAssertTrue(backend.permissions().accessibility)
-        postingGranted = false
+        trusted = false
         XCTAssertFalse(backend.permissions().accessibility)
-        XCTAssertEqual(trustChecks, 2)
+        XCTAssertEqual(trustChecks, 4)
+    }
+
+    func testKeyboardProbeDetectsGrantWhileBothListeningPreflightsStayDenied() {
+        var probeGranted = false
+        let backend = NativeFnBackend(checkInput: { kIOHIDAccessTypeDenied },
+                                      checkListening: { false }, checkPosting: { false },
+                                      checkAccessibility: { false },
+                                      probeListening: { probeGranted })
+        XCTAssertEqual(backend.permissions().input, false)
+        // 实测故障：同一进程的 HID/CG 预检仍拒绝，但键盘监听已可创建。
+        probeGranted = true
+        XCTAssertEqual(backend.permissions().input, true)
+        XCTAssertFalse(backend.permissions().accessibility)
+        probeGranted = false
+        XCTAssertEqual(backend.permissions().input, false)
+    }
+
+    func testGrantedListeningPreflightDoesNotCreateRedundantKeyboardProbe() {
+        let backend = NativeFnBackend(checkInput: { kIOHIDAccessTypeDenied },
+                                      checkListening: { true }, checkPosting: { false },
+                                      checkAccessibility: { false },
+                                      probeListening: { XCTFail("已通过预检时不创建监听探针"); return false })
+        XCTAssertEqual(backend.permissions().input, true)
+    }
+
+    func testHIDGrantAloneDoesNotHideUnavailableKeyboardListening() {
+        let backend = NativeFnBackend(checkInput: { kIOHIDAccessTypeGranted },
+                                      checkListening: { false }, checkPosting: { false },
+                                      checkAccessibility: { false }, probeListening: { false })
+        XCTAssertEqual(backend.permissions().input, false)
+    }
+
+    func testAccessibilityChangesAreDetectedWhilePostingPreflightRemainsFalse() {
+        var trusted = false
+        let backend = NativeFnBackend(checkInput: { kIOHIDAccessTypeGranted }, checkListening: { true },
+                                      checkPosting: { false }, checkAccessibility: { trusted },
+                                      probeListening: { false })
+        XCTAssertFalse(backend.permissions().accessibility)
+        trusted = true
+        XCTAssertTrue(backend.permissions().accessibility)
+        trusted = false
+        XCTAssertFalse(backend.permissions().accessibility)
+    }
+
+    func testPostingAccessDoesNotClaimKeyboardListeningAccess() {
+        let backend = NativeFnBackend(checkInput: { kIOHIDAccessTypeDenied }, checkListening: { false },
+                                      checkPosting: { true }, checkAccessibility: { true },
+                                      probeListening: { false })
+        let permissions = backend.permissions()
+        XCTAssertEqual(permissions.input, false)
+        XCTAssertTrue(permissions.accessibility)
     }
 
     func testPermissionNavigationTargetsOnlyMissingPermissions() {

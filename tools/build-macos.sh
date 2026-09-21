@@ -29,6 +29,13 @@ bin_dir="$(swift build --package-path "$root/native" -c "$configuration" --show-
 app="$root/build/Olanzi.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin_dir/Olanzi" "$app/Contents/MacOS/Olanzi"
+resource_bundle="$bin_dir/Olanzi_OlanziCore.bundle"
+if [[ ! -d "$resource_bundle" ]]; then
+    echo "Missing localization resources: $resource_bundle" >&2
+    exit 1
+fi
+rm -rf "$app/Contents/Resources/Olanzi_OlanziCore.bundle"
+cp -R "$resource_bundle" "$app/Contents/Resources/"
 cp "$root/native/Resources/Info.plist" "$app/Contents/Info.plist"
 iconset="$(mktemp -d)/AppIcon.iconset"
 trap 'rm -rf "$(dirname "$iconset")"' EXIT

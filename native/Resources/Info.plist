@@ -5,6 +5,8 @@
 <key>CFBundleIdentifier</key><string>com.mrcroxx.olanzi</string>
 <key>CFBundleName</key><string>Olanzi</string>
 <key>CFBundleDisplayName</key><string>Olanzi</string>
+<key>CFBundleDevelopmentRegion</key><string>en</string>
+<key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hans</string></array>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>CFBundleVersion</key><string>1</string>

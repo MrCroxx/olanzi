@@ -6,11 +6,12 @@ final class GestureRouterTests: XCTestCase {
     private let double = [KeyEntry(code: 0x28)]
     private let long = [KeyEntry(code: 0x29)]
 
-    private func map(double: Bool = false, long: Bool = false) -> HostKeymap {
+    private func map(double: Bool = false, long: Bool = false, behavior: LongPressBehavior = .hold) -> HostKeymap {
         HostKeymap(controls: (0..<6).map {
             ControlActionMap(index: $0, press: single,
                              doublePress: $0 < 4 && double ? self.double : nil,
-                             longPress: $0 < 4 && long ? self.long : nil)
+                             longPress: $0 < 4 && long ? self.long : nil,
+                             longPressBehavior: $0 < 4 ? behavior : .hold)
         })
     }
     private func down(_ index: Int = 0) -> VendorKeyEvent { .init(index: index, pressed: true) }
@@ -34,6 +35,37 @@ final class GestureRouterTests: XCTestCase {
         XCTAssertEqual(router.receive(down(), at: 0.1), [])
         XCTAssertEqual(router.receive(up(), at: 0.2), [.end(index: 0)])
         XCTAssertEqual(router.receive(up(), at: 0.3), [])
+    }
+
+    func testRapidClicksWithoutDoubleActionEachBeginImmediately() {
+        for index in 0..<4 {
+            var router = GestureRouter()
+            _ = router.configure(map())
+            // 每次间隔都小于双击窗口，仍须逐次按下和释放单击动作。
+            for click in 0..<5 {
+                let time = Double(click) * 0.08
+                XCTAssertEqual(router.receive(down(index), at: time),
+                               [.begin(index: index, entries: single)])
+                XCTAssertEqual(router.receive(up(index), at: time + 0.03), [.end(index: index)])
+            }
+            XCTAssertEqual(router.advance(to: 2), [])
+        }
+    }
+
+    func testRapidClicksWithOnlyLongActionEachFireSingleThenLongStillWorks() {
+        for index in 0..<4 {
+            var router = GestureRouter()
+            _ = router.configure(map(long: true))
+            for click in 0..<5 {
+                let time = Double(click) * 0.08
+                XCTAssertEqual(router.receive(down(index), at: time), [])
+                XCTAssertEqual(router.receive(up(index), at: time + 0.03), pulse(single, index))
+            }
+            XCTAssertEqual(router.receive(down(index), at: 0.4), [])
+            XCTAssertEqual(router.advance(to: 1), [.begin(index: index, entries: long)])
+            XCTAssertEqual(router.receive(up(index), at: 1.1), [.end(index: index)])
+            XCTAssertEqual(router.advance(to: 2), [])
+        }
     }
 
     func testSingleWaitsFromFirstReleaseAndFiresAtExactDeadline() {
@@ -195,4 +227,63 @@ final class GestureRouterTests: XCTestCase {
         transport.receiveDecodedFrame([0x8b, 0x10, 0, 0, 0])
         XCTAssertEqual(actions.map(\.1), [true, false])
     }
+    func testTapLongPressPulsesOnceAndIgnoresTimersDuplicatesAndRelease() {
+        for index in 0..<4 {
+            var router = GestureRouter()
+            _ = router.configure(map(double: true, long: true, behavior: .tap))
+            XCTAssertEqual(router.receive(down(index), at: 0), [])
+            XCTAssertEqual(router.advance(to: 0.499), [])
+            XCTAssertEqual(router.advance(to: 0.5), pulse(long, index))
+            XCTAssertEqual(router.receive(down(index), at: 0.6), [])
+            XCTAssertEqual(router.advance(to: 10), [])
+            XCTAssertEqual(router.receive(up(index), at: 11), [])
+            XCTAssertEqual(router.receive(up(index), at: 12), [])
+            XCTAssertEqual(router.advance(to: 13), [])
+            XCTAssertEqual(router.receive(down(index), at: 14), [])
+            XCTAssertEqual(router.receive(up(index), at: 14.5), pulse(long, index))
+        }
+    }
+
+    func testSecondTapLongPressSuppressesBothPendingSingleAndDouble() {
+        var router = GestureRouter()
+        _ = router.configure(map(double: true, long: true, behavior: .tap))
+        _ = router.receive(down(), at: 0)
+        _ = router.receive(up(), at: 0.125)
+        _ = router.receive(down(), at: 0.25)
+        XCTAssertEqual(router.advance(to: 0.75), pulse(long))
+        XCTAssertEqual(router.receive(up(), at: 0.8), [])
+        XCTAssertEqual(router.advance(to: 2), [])
+    }
+
+    func testTapLongPressStillAllowsShortPrimaryAndDoubleActions() {
+        var router = GestureRouter()
+        _ = router.configure(map(long: true, behavior: .tap))
+        _ = router.receive(down(), at: 0)
+        XCTAssertEqual(router.receive(up(), at: 0.499), pulse(single))
+        _ = router.configure(map(double: true, long: true, behavior: .tap))
+        _ = router.receive(down(), at: 1)
+        _ = router.receive(up(), at: 1.125)
+        _ = router.receive(down(), at: 1.25)
+        XCTAssertEqual(router.receive(up(), at: 1.3), pulse(double))
+        XCTAssertEqual(router.advance(to: 3), [])
+    }
+
+    func testCancelAndReconfigureNeverReplayCompletedOrPendingTapLongPress() {
+        for fireBeforeCancel in [false, true] {
+            var router = GestureRouter()
+            _ = router.configure(map(double: true, long: true, behavior: .tap))
+            _ = router.receive(down(), at: 0)
+            if fireBeforeCancel { XCTAssertEqual(router.advance(to: 0.5), pulse(long)) }
+            XCTAssertEqual(router.cancel(), [])
+            XCTAssertEqual(router.advance(to: 1), [])
+            XCTAssertEqual(router.configure(map(double: true, long: true)), [])
+            XCTAssertEqual(router.receive(down(), at: 2), [])
+            XCTAssertEqual(router.receive(up(), at: 3), [])
+            XCTAssertEqual(router.receive(down(), at: 4), [])
+            XCTAssertEqual(router.advance(to: 4.5), [.begin(index: 0, entries: long)])
+            XCTAssertEqual(router.configure(map(double: true, long: true, behavior: .tap)), [.end(index: 0)])
+            XCTAssertEqual(router.receive(up(), at: 5), [])
+        }
+    }
+
 }

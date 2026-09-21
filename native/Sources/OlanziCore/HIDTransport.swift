@@ -3,6 +3,7 @@ import IOKit
 import IOKit.hid
 
 protocol DeviceTransport: AnyObject {
+    var heartbeatEnabled: Bool { get set }
     var lastHeartbeat: Date? { get }
     var onKeyEvent: ((VendorKeyEvent) -> Void)? { get set }
     var onPump: (() -> Void)? { get set }
@@ -10,6 +11,7 @@ protocol DeviceTransport: AnyObject {
     func close()
     func pump(for duration: TimeInterval) throws
     func queryOnline() throws -> Bool
+    func readBattery() throws -> DeviceBattery
     func readKey(index: Int) throws -> KeyBinding
     func writeKey(index: Int, code: UInt8) throws
     func takeKeyEvents() -> [VendorKeyEvent]
@@ -19,10 +21,17 @@ extension DeviceTransport {
     var onKeyEvent: ((VendorKeyEvent) -> Void)? { get { nil } set {} }
     var onPump: (() -> Void)? { get { nil } set {} }
     func takeKeyEvents() -> [VendorKeyEvent] { [] }
+    func readBattery() throws -> DeviceBattery { throw DeviceProtocolError.message("此连接尚不支持电量读取。") }
 }
 
 /// 实例、回调以及所有 IOKit 操作仅在设备工作线程中使用。
 final class MacHIDTransport: DeviceTransport {
+    var heartbeatEnabled = false {
+        didSet {
+            if !heartbeatEnabled { lastHeartbeat = nil }
+            if heartbeatEnabled != oldValue { nextHeartbeat = 0 }
+        }
+    }
     var onKeyEvent: ((VendorKeyEvent) -> Void)?
     var onPump: (() -> Void)?
     private var device: IOHIDDevice?
@@ -109,6 +118,7 @@ final class MacHIDTransport: DeviceTransport {
     }
 
     func close() {
+        heartbeatEnabled = false
         if let device = device {
             if let buffer = buffer { IOHIDDeviceRegisterInputReportCallback(device, buffer, 512, nil, nil) }
             IOHIDDeviceRegisterRemovalCallback(device, nil, nil)
@@ -136,7 +146,8 @@ final class MacHIDTransport: DeviceTransport {
         }
         // 查询等待期间也推进手势计时；回调不得重新进入设备查询或写入。
         onPump?()
-        guard device != nil else { return }
+        // 心跳会关闭标准 HID 直出，只有主机已经能接管输入时才允许发送。
+        guard device != nil, heartbeatEnabled else { return }
         if ProcessInfo.processInfo.systemUptime >= nextHeartbeat {
             // 心跳没有已确认的 ACK，不据成功发送推断设备本体在线。
             try send(DeviceProtocol.heartbeat)
@@ -148,6 +159,12 @@ final class MacHIDTransport: DeviceTransport {
     func queryOnline() throws -> Bool {
         let frame = try exchange(DeviceProtocol.onlineRequest, timeout: 0.8, matching: DeviceProtocol.matchesOnlineReply)
         return try DeviceProtocol.parseOnline(frame)
+    }
+
+    func readBattery() throws -> DeviceBattery {
+        let frame = try exchange(DeviceProtocol.batteryRequest, timeout: 0.8,
+                                 matching: DeviceProtocol.matchesBatteryReply)
+        return try DeviceProtocol.parseBattery(frame)
     }
 
     func takeKeyEvents() -> [VendorKeyEvent] {
@@ -214,15 +231,22 @@ final class MacHIDTransport: DeviceTransport {
 
 /// 演示路径只维护内存，不构造 IOKit 设备或调用输入权限 API。
 final class DemoHIDTransport: DeviceTransport {
+    var heartbeatEnabled = false {
+        didSet { if !heartbeatEnabled { lastHeartbeat = nil } }
+    }
     private var keys = DeviceProtocol.defaultCodes.enumerated().map { KeyBinding(index: $0.offset, entries: [KeyEntry(code: $0.element)]) }
     private var opened = false
     private(set) var lastHeartbeat: Date?
-    func open() throws { opened = true; lastHeartbeat = Date() }
-    func close() { opened = false; lastHeartbeat = nil }
+    func open() throws { opened = true; heartbeatEnabled = false; lastHeartbeat = nil }
+    func close() { opened = false; heartbeatEnabled = false; lastHeartbeat = nil }
     func pump(for duration: TimeInterval) throws {
-        if opened, Date().timeIntervalSince(lastHeartbeat ?? .distantPast) >= 1 { lastHeartbeat = Date() }
+        if opened, heartbeatEnabled, Date().timeIntervalSince(lastHeartbeat ?? .distantPast) >= 1 { lastHeartbeat = Date() }
     }
     func queryOnline() throws -> Bool { opened }
+    func readBattery() throws -> DeviceBattery {
+        guard opened else { throw DeviceProtocolError.message("演示设备尚未连接。") }
+        return DeviceBattery(millivolts: 3900, percentage: 80, isCharging: false)
+    }
     func readKey(index: Int) throws -> KeyBinding {
         guard opened, (0..<6).contains(index) else { throw DeviceProtocolError.invalidControl }
         return keys[index]

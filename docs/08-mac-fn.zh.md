@@ -39,11 +39,11 @@
 | 设备断开、在线状态不可用、关闭转换或服务退出 | 关闭输入接口前尝试释放 Fn |
 | 松开事件发送失败 | 显示错误并保留待释放状态以重试，不虚报释放成功 |
 
-筛选目标为 VID `0xFFF1` / PID `0x00DD` 和 AU05 标准输入接口，不监控其他键盘的输入报文。关闭转换时，不打开该输入接口。事件发送器读取物理修饰键的汇总位掩码，以保留同时按住的修饰键；它不采集或记录其他键盘的按键事件。
+筛选目标为 VID `0xFFF1` / PID `0x00DD` 和 AU05 标准输入接口，不监控其他键盘的输入报文。关闭转换时，不打开该输入接口。旧事件发送器读取修饰键汇总位掩码，以保留同时按住的修饰键；它不采集或记录其他键盘的按键事件。这些汇总标志不能证明真实 Fn 状态：后续原生应用调查 [05 §9.9](05-verification-log.zh.md#99-合成-fn-反馈污染-hid-状态) 发现，本应用合成的 Fn 会出现在 HID 标志与按键状态中。
 
 主机事件采用虚拟键码 63，对应 Apple SDK 的 `HIToolbox.framework/Headers/Events.h` 中的 `kVK_Function = 0x3F`，以及 Fn 标志位 `0x800000`。Apple 的 [maskSecondaryFn 文档](https://developer.apple.com/documentation/coregraphics/cgeventflags/masksecondaryfn) 将这个标志定义为 Fn 按下指示。按下和松开均发送为 [flagsChanged 事件](https://developer.apple.com/documentation/coregraphics/cgeventtype/flagschanged)。
 
-当前实现创建键盘事件、设置类型与标志位，再通过 [cgSessionEventTap](https://developer.apple.com/documentation/coregraphics/cgeventtaplocation/cgsessioneventtap) 投递，并使用私有事件源。这种隔离旨在合并修饰键时，避免把自身合成的 Fn 状态误认为物理键盘状态。这项实现选择不能证明它与所有硬件路径或 Studio 专用 Fn 路径等效。事件标志位设置见 Apple 的 [CGEventSetFlags 文档](https://developer.apple.com/documentation/coregraphics/cgeventsetflags?language=objc)。
+历史原型创建键盘事件、设置类型与标志位，再通过 [cgSessionEventTap](https://developer.apple.com/documentation/coregraphics/cgeventtaplocation/cgsessioneventtap) 投递，并使用私有事件源。该事件源原本旨在区分合成与真实 Fn 状态，但它不能隔离 HID 汇总，不能作为已验证的物理状态判据。当前原生实现独立跟踪真实 Fn 元数据，见 [09](09-native-macos.zh.md) 和 [10](10-input-runtime.zh.md)。这项实现选择不能证明它与所有硬件路径或 Studio 专用 Fn 路径等效。事件标志位设置见 Apple 的 [CGEventSetFlags 文档](https://developer.apple.com/documentation/coregraphics/cgeventsetflags?language=objc)。
 
 ## 4. 旧原型的设置与配置文件
 

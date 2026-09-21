@@ -5,6 +5,13 @@ import XCTest
 
 private final class HostServiceTransport: DeviceTransport {
     let lock = NSLock()
+    private var heartbeatAllowed = false
+    private var heartbeatCount = 0
+    var heartbeatEnabled: Bool {
+        get { lock.withLock { heartbeatAllowed } }
+        set { lock.withLock { heartbeatAllowed = newValue } }
+    }
+    var heartbeats: Int { lock.withLock { heartbeatCount } }
     var onKeyEvent: ((VendorKeyEvent) -> Void)?
     var onPump: (() -> Void)?
     var lastHeartbeat: Date? = Date()
@@ -15,10 +22,16 @@ private final class HostServiceTransport: DeviceTransport {
     private var queryAction: ((HostServiceTransport) -> Void)?
     var writes: Int { lock.withLock { writeCount } }
     func setCode(_ code: UInt8, index: Int) { lock.withLock { keys[index] = KeyBinding(index: index, entries: [KeyEntry(code: code)]) } }
+    func setEntries(_ entries: [KeyEntry], index: Int) {
+        lock.withLock { keys[index] = KeyBinding(index: index, entries: entries) }
+    }
     func onNextQuery(_ action: @escaping (HostServiceTransport) -> Void) { lock.withLock { queryAction = action } }
-    func open() throws {}
-    func close() {}
-    func pump(for duration: TimeInterval) throws { onPump?() }
+    func open() throws { heartbeatEnabled = false }
+    func close() { heartbeatEnabled = false }
+    func pump(for duration: TimeInterval) throws {
+        onPump?()
+        lock.withLock { if heartbeatAllowed { heartbeatCount += 1 } }
+    }
     func queryOnline() throws -> Bool {
         let action = lock.withLock { () -> ((HostServiceTransport) -> Void)? in
             defer { queryAction = nil }
@@ -89,17 +102,25 @@ private final class HostActionLog: @unchecked Sendable {
     var presses: [Bool] { lock.withLock { records.map(\.1) } }
 }
 
+private final class HostPermissions: @unchecked Sendable {
+    private let lock = NSLock()
+    private var granted = true
+    func set(_ value: Bool) { lock.withLock { granted = value } }
+    func read() -> (input: Bool?, accessibility: Bool) { lock.withLock { (granted, granted) } }
+}
+
 final class HostServiceTests: XCTestCase {
     private func map(code: UInt8 = 1) -> HostKeymap {
         HostKeymap(controls: (0..<6).map { ControlActionMap(index: $0, press: [KeyEntry(code: $0 == 0 ? code : 0x28)]) })
     }
     private func service(_ store: MemoryHostStore, transport: HostServiceTransport,
                          snapshots: HostSnapshots, demo: Bool = false,
-                         actions: HostActionLog = HostActionLog()) -> NativeDeviceService {
+                         actions: HostActionLog = HostActionLog(),
+                         permissions: HostPermissions = HostPermissions()) -> NativeDeviceService {
         NativeDeviceService(demo: demo, transportFactory: { transport },
                             loadHostKeymap: { try store.load() }, saveHostKeymap: { try store.save($0) },
                             bridgeFactory: {
-            VendorKeyBridge(permissions: { (true, true) }, now: { actions.now }, emit: { entries, down, _ in
+            VendorKeyBridge(permissions: { permissions.read() }, now: { actions.now }, emit: { entries, down, _ in
                 actions.record(entries, down)
             })
         }, onChange: { snapshots.append($0) })
@@ -110,16 +131,28 @@ final class HostServiceTests: XCTestCase {
         wait(for: [done], timeout: 2)
     }
 
-    func testMissingFileSeedsOnceAndRefreshReconnectNeverOverwriteHostConfiguration() throws {
+    func testMissingFileRequiresExplicitSaveAndRefreshReconnectNeverOverwriteHostConfiguration() throws {
         let store = MemoryHostStore()
         let transport = HostServiceTransport()
         let snapshots = HostSnapshots()
         let service = service(store, transport: transport, snapshots: snapshots)
         defer { stop(service) }
         service.start()
-        let initial = try XCTUnwrap(snapshots.wait { $0.hostKeymap != nil && $0.online == true })
-        XCTAssertEqual(initial.hostKeymap?.controls[0].press.first?.code, 1)
+        let missing = try XCTUnwrap(snapshots.wait { $0.hostConfigurationMissing && $0.online == true })
+        XCTAssertNil(missing.hostKeymap)
+        XCTAssertNil(missing.error)
+        XCTAssertFalse(missing.fn.active)
+        XCTAssertFalse(missing.heartbeatEnabled)
         XCTAssertEqual(store.counts.0, 1)
+        XCTAssertEqual(store.counts.1, 0)
+        XCTAssertEqual(transport.heartbeats, 0)
+        XCTAssertNoThrow(try HostKeymap.defaultKeymap.validate())
+        let requestID = UUID()
+        service.applyHostKeymap(.defaultKeymap, requestID: requestID)
+        let initial = try XCTUnwrap(snapshots.wait { !$0.busy && $0.hostSaveResult?.requestID == requestID })
+        XCTAssertEqual(initial.hostKeymap, .defaultKeymap)
+        XCTAssertFalse(initial.hostConfigurationMissing)
+        XCTAssertTrue(initial.heartbeatEnabled)
         XCTAssertEqual(store.counts.1, 1)
         transport.setCode(0x69, index: 0)
         var mark = snapshots.count
@@ -138,6 +171,31 @@ final class HostServiceTests: XCTestCase {
         XCTAssertEqual(transport.writes, 0)
     }
 
+    func testMissingHostConfigurationCanBeSavedBeforeFirstDeviceConnection() throws {
+        let store = MemoryHostStore()
+        let transport = HostServiceTransport()
+        let snapshots = HostSnapshots()
+        let service = service(store, transport: transport, snapshots: snapshots)
+        defer { stop(service) }
+        service.disconnect()
+        service.start()
+        XCTAssertNotNil(snapshots.wait { $0.hostConfigurationMissing && !$0.connected })
+        let requestID = UUID()
+        service.applyHostKeymap(.defaultKeymap, requestID: requestID)
+        let saved = try XCTUnwrap(snapshots.wait { !$0.busy && $0.hostSaveResult?.requestID == requestID })
+        XCTAssertNil(saved.hostSaveResult?.error)
+        XCTAssertEqual(saved.hostKeymap, .defaultKeymap)
+        XCTAssertFalse(saved.hostConfigurationMissing)
+        XCTAssertFalse(saved.connected)
+        XCTAssertFalse(saved.fn.active)
+        XCTAssertFalse(saved.heartbeatEnabled)
+        XCTAssertEqual(store.value, .defaultKeymap)
+        XCTAssertEqual(store.counts.0, 1)
+        XCTAssertEqual(store.counts.1, 1)
+        XCTAssertEqual(transport.heartbeats, 0)
+        XCTAssertEqual(transport.writes, 0)
+    }
+
     func testExistingHostConfigurationSurvivesDifferentDeviceBindingsAndOfflineSave() throws {
         let original = map(code: 0x68)
         let store = MemoryHostStore(original)
@@ -147,6 +205,7 @@ final class HostServiceTests: XCTestCase {
         defer { stop(service) }
         service.start()
         XCTAssertNotNil(snapshots.wait { $0.online == true && $0.hostKeymap == original })
+        XCTAssertNotNil(snapshots.wait { $0.hostKeymap == original && !$0.hostConfigurationMissing })
         var mark = snapshots.count
         service.disconnect()
         XCTAssertNotNil(snapshots.wait(after: mark) { !$0.connected && !$0.busy })
@@ -207,7 +266,9 @@ final class HostServiceTests: XCTestCase {
         service.start()
         let failed = try XCTUnwrap(snapshots.wait { $0.online == true && $0.error?.contains("损坏配置测试") == true })
         XCTAssertNil(failed.hostKeymap)
+        XCTAssertFalse(failed.hostConfigurationMissing)
         XCTAssertFalse(failed.fn.active)
+        XCTAssertFalse(failed.heartbeatEnabled)
         let mark = snapshots.count
         service.refresh()
         let refreshed = try XCTUnwrap(snapshots.wait(after: mark) { !$0.busy && $0.online == true })
@@ -215,9 +276,17 @@ final class HostServiceTests: XCTestCase {
         XCTAssertEqual(store.counts.0, 1)
         XCTAssertEqual(store.counts.1, 0)
         XCTAssertEqual(transport.writes, 0)
+        let requestID = UUID()
+        service.applyHostKeymap(map(), requestID: requestID)
+        let rejected = try XCTUnwrap(snapshots.wait { $0.hostSaveResult?.requestID == requestID })
+        XCTAssertNotNil(rejected.hostSaveResult?.error)
+        XCTAssertNil(rejected.hostKeymap)
+        XCTAssertFalse(rejected.hostConfigurationMissing)
+        XCTAssertEqual(store.counts.1, 0)
+        XCTAssertEqual(transport.heartbeats, 0)
     }
 
-    func testFailedFirstSeedDoesNotActivateOrRepeatedlyRewrite() throws {
+    func testFailedFirstExplicitSaveDoesNotActivateOrRetryUntilRequested() throws {
         let store = MemoryHostStore()
         store.setSaveFailure(true)
         let transport = HostServiceTransport()
@@ -225,15 +294,32 @@ final class HostServiceTests: XCTestCase {
         let service = service(store, transport: transport, snapshots: snapshots)
         defer { stop(service) }
         service.start()
-        let failed = try XCTUnwrap(snapshots.wait { $0.online == true && $0.error?.contains("无法从设备初始化") == true })
+        XCTAssertNotNil(snapshots.wait { $0.online == true && $0.hostConfigurationMissing })
+        XCTAssertEqual(store.counts.1, 0)
+        let failedID = UUID()
+        service.applyHostKeymap(.defaultKeymap, requestID: failedID)
+        let failed = try XCTUnwrap(snapshots.wait { !$0.busy && $0.hostSaveResult?.requestID == failedID })
+        XCTAssertTrue(failed.hostSaveResult?.error?.contains("持久化失败测试") == true)
         XCTAssertNil(failed.hostKeymap)
+        XCTAssertTrue(failed.hostConfigurationMissing)
         XCTAssertFalse(failed.fn.active)
+        XCTAssertFalse(failed.heartbeatEnabled)
         let mark = snapshots.count
         service.refresh()
         XCTAssertNotNil(snapshots.wait(after: mark) { !$0.busy && $0.online == true })
         XCTAssertEqual(store.counts.1, 1)
         XCTAssertNil(store.value)
         XCTAssertEqual(transport.writes, 0)
+        XCTAssertEqual(transport.heartbeats, 0)
+        store.setSaveFailure(false)
+        let requestID = UUID()
+        service.applyHostKeymap(map(), requestID: requestID)
+        let saved = try XCTUnwrap(snapshots.wait { $0.hostSaveResult?.requestID == requestID && !$0.busy })
+        XCTAssertNil(saved.hostSaveResult?.error)
+        XCTAssertFalse(saved.hostConfigurationMissing)
+        XCTAssertEqual(saved.hostKeymap, map())
+        XCTAssertTrue(saved.heartbeatEnabled)
+        XCTAssertEqual(store.counts.1, 2)
     }
 
     func testDemoNeverLoadsSavesOrInjectsRealActions() throws {
@@ -246,7 +332,9 @@ final class HostServiceTests: XCTestCase {
         let service = service(store, transport: transport, snapshots: snapshots, demo: true, actions: actions)
         defer { stop(service) }
         service.start()
-        XCTAssertNotNil(snapshots.wait { $0.demo && $0.hostKeymap != nil })
+        let initial = try XCTUnwrap(snapshots.wait { $0.demo && $0.hostKeymap != nil })
+        XCTAssertEqual(initial.hostKeymap, .defaultKeymap)
+        XCTAssertFalse(initial.hostConfigurationMissing)
         let mark = snapshots.count
         service.applyHostKeymap(map(code: 0x69))
         XCTAssertNotNil(snapshots.wait(after: mark) { !$0.busy && $0.hostKeymap == self.map(code: 0x69) })
@@ -254,6 +342,134 @@ final class HostServiceTests: XCTestCase {
         XCTAssertEqual(store.counts.1, 0)
         XCTAssertTrue(actions.codes.isEmpty)
         XCTAssertEqual(transport.writes, 0)
+    }
+
+    func testUnsupportedDeviceBindingDoesNotBlockExplicitDefaultHostConfiguration() throws {
+        let store = MemoryHostStore()
+        let transport = HostServiceTransport()
+        let media = [KeyEntry(type: 3, code: 4)]
+        transport.setEntries(media, index: 4)
+        let snapshots = HostSnapshots()
+        let service = service(store, transport: transport, snapshots: snapshots)
+        defer { stop(service) }
+        service.start()
+        let missing = try XCTUnwrap(snapshots.wait { $0.online == true && $0.hostConfigurationMissing })
+        XCTAssertTrue(missing.connected)
+        XCTAssertNil(missing.error)
+        XCTAssertNil(missing.hostKeymap)
+        XCTAssertFalse(missing.heartbeatEnabled)
+        XCTAssertFalse(missing.fn.active)
+        XCTAssertEqual(missing.keys[4].entries, media)
+        let mark = snapshots.count
+        service.refresh()
+        XCTAssertNotNil(snapshots.wait(after: mark) { !$0.busy && $0.hostConfigurationMissing && $0.error == nil })
+        XCTAssertEqual(transport.heartbeats, 0)
+        XCTAssertEqual(store.counts.1, 0)
+
+        let requestID = UUID()
+        service.applyHostKeymap(.defaultKeymap, requestID: requestID)
+        let saved = try XCTUnwrap(snapshots.wait { !$0.busy && $0.hostSaveResult?.requestID == requestID })
+        XCTAssertNil(saved.hostSaveResult?.error)
+        XCTAssertNil(saved.error)
+        XCTAssertTrue(saved.fn.active)
+        XCTAssertTrue(saved.heartbeatEnabled)
+        XCTAssertEqual(saved.hostKeymap, .defaultKeymap)
+        XCTAssertFalse(saved.hostConfigurationMissing)
+        XCTAssertEqual(saved.keys[4].entries, media)
+        XCTAssertEqual(transport.writes, 0)
+    }
+
+    func testHardwareChangesNeverInitializeMissingHostConfiguration() throws {
+        let store = MemoryHostStore()
+        let transport = HostServiceTransport()
+        transport.setCode(0x70, index: 4)
+        let snapshots = HostSnapshots()
+        let service = service(store, transport: transport, snapshots: snapshots)
+        defer { stop(service) }
+        service.start()
+        XCTAssertNotNil(snapshots.wait { $0.online == true && $0.hostConfigurationMissing && $0.error == nil })
+        XCTAssertEqual(transport.heartbeats, 0)
+        transport.setCode(0x4F, index: 4)
+        let mark = snapshots.count
+        service.refresh()
+        let refreshed = try XCTUnwrap(snapshots.wait(after: mark) { !$0.busy && $0.keys[4].code == 0x4F })
+        XCTAssertNil(refreshed.error)
+        XCTAssertNil(refreshed.hostKeymap)
+        XCTAssertTrue(refreshed.hostConfigurationMissing)
+        XCTAssertFalse(refreshed.heartbeatEnabled)
+        XCTAssertEqual(transport.heartbeats, 0)
+        XCTAssertEqual(store.counts.1, 0)
+        XCTAssertEqual(transport.writes, 0)
+    }
+
+    func testPermissionsGateHeartbeatIncludingRevocationDuringQuery() throws {
+        let store = MemoryHostStore(map())
+        let transport = HostServiceTransport()
+        let snapshots = HostSnapshots()
+        let actions = HostActionLog()
+        let permissions = HostPermissions()
+        permissions.set(false)
+        let service = service(store, transport: transport, snapshots: snapshots,
+                              actions: actions, permissions: permissions)
+        defer { stop(service) }
+        service.start()
+        let missing = try XCTUnwrap(snapshots.wait { $0.online == true && $0.fn.error != nil })
+        XCTAssertFalse(missing.heartbeatEnabled)
+        XCTAssertFalse(missing.fn.active)
+        XCTAssertEqual(transport.heartbeats, 0)
+        permissions.set(true)
+        var mark = snapshots.count
+        service.checkFnPermissions()
+        XCTAssertNotNil(snapshots.wait(after: mark) { !$0.busy && $0.heartbeatEnabled && $0.fn.active })
+
+        transport.onNextQuery { device in
+            XCTAssertTrue(device.heartbeatEnabled)
+            device.onKeyEvent?(.init(index: 0, pressed: true))
+            XCTAssertEqual(actions.presses, [true])
+            permissions.set(false)
+            actions.advance(3)
+            let count = device.heartbeats
+            try? device.pump(for: 0)
+            XCTAssertFalse(device.heartbeatEnabled)
+            XCTAssertEqual(device.heartbeats, count)
+            XCTAssertEqual(actions.presses, [true, false])
+            device.onKeyEvent?(.init(index: 0, pressed: false))
+        }
+        mark = snapshots.count
+        service.connect()
+        XCTAssertNotNil(snapshots.wait(after: mark) { !$0.busy && !$0.heartbeatEnabled && !$0.fn.active })
+        XCTAssertEqual(actions.presses, [true, false])
+        permissions.set(true)
+        mark = snapshots.count
+        service.checkFnPermissions()
+        XCTAssertNotNil(snapshots.wait(after: mark) { !$0.busy && $0.heartbeatEnabled && $0.fn.active })
+        XCTAssertEqual(transport.writes, 0)
+    }
+
+    func testSaveResultsIdentifyFailuresAndDoNotChangeForOtherJobs() throws {
+        let store = MemoryHostStore(map())
+        let transport = HostServiceTransport()
+        let snapshots = HostSnapshots()
+        let service = service(store, transport: transport, snapshots: snapshots)
+        defer { stop(service) }
+        service.start()
+        XCTAssertNotNil(snapshots.wait { $0.online == true })
+        store.setSaveFailure(true)
+        let firstID = UUID()
+        service.applyHostKeymap(map(code: 0x29), requestID: firstID)
+        let failed = try XCTUnwrap(snapshots.wait { !$0.busy && $0.hostSaveResult?.requestID == firstID })
+        XCTAssertTrue(failed.hostSaveResult?.error?.contains("持久化失败测试") == true)
+        var mark = snapshots.count
+        service.checkFnPermissions()
+        let checked = try XCTUnwrap(snapshots.wait(after: mark) { !$0.busy })
+        XCTAssertEqual(checked.hostSaveResult, failed.hostSaveResult)
+        store.setSaveFailure(false)
+        let secondID = UUID()
+        mark = snapshots.count
+        service.applyHostKeymap(map(code: 0x29), requestID: secondID)
+        let saved = try XCTUnwrap(snapshots.wait(after: mark) { !$0.busy && $0.hostSaveResult?.requestID == secondID })
+        XCTAssertNil(saved.hostSaveResult?.error)
+        XCTAssertEqual(saved.hostKeymap, map(code: 0x29))
     }
 
     func testLongDeadlineProgressesInsideBusyQueryWithoutAnotherReport() throws {
@@ -268,10 +484,12 @@ final class HostServiceTests: XCTestCase {
         service.start()
         XCTAssertNotNil(snapshots.wait { $0.online == true && $0.fn.active })
         transport.onNextQuery { device in
+            XCTAssertTrue(device.heartbeatEnabled)
             device.onKeyEvent?(.init(index: 0, pressed: true))
             XCTAssertTrue(actions.codes.isEmpty)
             actions.advance(0.5)
             device.onPump?()
+            XCTAssertTrue(device.heartbeatEnabled)
             XCTAssertEqual(actions.codes, [0x29])
             XCTAssertEqual(actions.presses, [true])
             device.onKeyEvent?(.init(index: 0, pressed: false))
@@ -305,6 +523,7 @@ final class HostServiceTests: XCTestCase {
             service.resumeAfterSystemWake()
             actions.advance(20)
             device.onPump?()
+            XCTAssertFalse(device.heartbeatEnabled)
             XCTAssertTrue(actions.codes.isEmpty)
         }
         var mark = snapshots.count

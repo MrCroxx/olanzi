@@ -725,4 +725,46 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.hasDraft)
     }
 
+    func testLongPressRepeatCountValidatesWithoutChangingSavedMapAndSurvivesSave() async throws {
+        let model = initializedModel()
+        model.selected = 3
+        model.gesture = .longPress
+        model.assign(1)
+        XCTAssertTrue(model.setLongPressBehavior(.burst))
+        XCTAssertEqual(model.longPressTapCount(), 2)
+        XCTAssertTrue(model.setLongPressTapCount(5))
+        XCTAssertEqual(model.longPressBehaviorLabel(), "连按 5 次")
+        XCTAssertTrue(model.fnBehaviorHint?.contains("Fn 5 次") == true)
+        XCTAssertTrue(model.longPressBehaviorHelp.contains("松开后仍完成"))
+        XCTAssertEqual(model.device.hostKeymap, initialKeymap())
+        let draft = try XCTUnwrap(model.draft)
+        for count in [Int.min, 0, 1, 21, Int.max] {
+            XCTAssertFalse(model.setLongPressTapCount(count))
+            XCTAssertEqual(model.draft, draft)
+        }
+        for index in [-1, 4, 5, 99] {
+            XCTAssertFalse(model.setLongPressTapCount(7, index: index))
+            XCTAssertEqual(model.draft, draft)
+        }
+        model.selected = 0
+        XCTAssertTrue(model.setLongPressTapCount(20, index: 3))
+        XCTAssertEqual(model.longPressTapCount(), 2)
+        XCTAssertEqual(model.longPressTapCount(index: 3), 20)
+        XCTAssertTrue(model.setLongPressBehavior(.hold, index: 3))
+        XCTAssertTrue(model.setLongPressBehavior(.burst, index: 3))
+        XCTAssertEqual(model.longPressTapCount(index: 3), 20)
+        model.saveProfile(name: "连按")
+        let profile = try XCTUnwrap(model.profiles.first)
+        XCTAssertEqual(try HostProfile.decode(data: JSONEncoder().encode(profile)).keymap, model.keymap)
+        let submitted = try XCTUnwrap(model.draft)
+        model.apply()
+        model.receive(try completedSnapshot(submitted, model: model))
+        XCTAssertFalse(model.hasDraft)
+        XCTAssertTrue(model.setLongPressTapCount(2, index: 3))
+        model.discard()
+        XCTAssertEqual(model.longPressTapCount(index: 3), 20)
+        model.language = .english
+        XCTAssertEqual(model.longPressBehaviorLabel(index: 3), "Tap 20 times")
+    }
+
 }

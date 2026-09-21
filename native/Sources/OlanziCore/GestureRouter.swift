@@ -12,6 +12,7 @@ struct GestureRouter {
         case pressing(start: TimeInterval, second: Bool)
         case waiting(deadline: TimeInterval)
         case holding
+        case burst(down: Bool, remaining: Int, deadline: TimeInterval)
         case completed
     }
     private var configuration: HostKeymap?
@@ -30,13 +31,21 @@ struct GestureRouter {
     /// 配置切换、撤权期间仍按住的物理键必须先松开，才接受新动作。
     mutating func cancel(quarantine: Bool = true) -> [GestureTransition] {
         let releases = phases.keys.sorted().compactMap { index -> GestureTransition? in
-            guard case .holding = phases[index] else { return nil }
-            return .end(index: index)
+            switch phases[index] {
+            case .holding, .burst(down: true, remaining: _, deadline: _): return .end(index: index)
+            default: return nil
+            }
         }
         phases.removeAll()
         if quarantine { quarantined.formUnion(physicalDown) }
         else { physicalDown.removeAll(); quarantined.removeAll() }
         return releases
+    }
+
+    /// 发布失败只取消该控件的后续调度，其它控件的真实按住所有权继续保留。
+    mutating func cancel(index: Int) {
+        phases.removeValue(forKey: index)
+        if physicalDown.contains(index) { quarantined.insert(index) }
     }
 
     mutating func observeWhileSuspended(_ event: VendorKeyEvent) {
@@ -57,14 +66,33 @@ struct GestureRouter {
                 transitions += pulse(index: index, entries: control.press)
             case .pressing(let start, _) where time >= start + configuration.longPressThreshold:
                 if let action = control.longPress {
-                    if control.longPressBehavior == .tap {
+                    switch control.longPressBehavior {
+                    case .tap:
                         // 已完成的长按仍等待物理松开，重复报文和后续时钟不能重触发。
                         phases[index] = .completed
                         transitions += pulse(index: index, entries: action)
-                    } else {
+                    case .hold:
                         phases[index] = .holding
                         transitions.append(.begin(index: index, entries: action))
+                    case .burst:
+                        phases[index] = .burst(down: true, remaining: control.longPressTapCount - 1,
+                                               deadline: time + 0.04)
+                        transitions.append(.begin(index: index, entries: action))
                     }
+                }
+            case .burst(let down, let remaining, let deadline) where time >= deadline:
+                // 每次推进仅产生一个边沿，下一期限相对实际执行时间计算；不追赶补发积压脉冲。
+                if down {
+                    transitions.append(.end(index: index))
+                    if remaining == 0 {
+                        if physicalDown.contains(index) { phases[index] = .completed }
+                        else { phases.removeValue(forKey: index) }
+                    } else {
+                        phases[index] = .burst(down: false, remaining: remaining, deadline: time + 0.08)
+                    }
+                } else if let action = control.longPress {
+                    phases[index] = .burst(down: true, remaining: remaining - 1, deadline: time + 0.04)
+                    transitions.append(.begin(index: index, entries: action))
                 }
             default: break
             }
@@ -85,6 +113,8 @@ struct GestureRouter {
         if event.pressed {
             guard physicalDown.insert(event.index).inserted else { return transitions }
             guard !quarantined.contains(event.index) else { return transitions }
+            // 连按期间的新物理按下只更新按住状态，不另开一组或覆盖队列。
+            if case .burst = phases[event.index] { return transitions }
             if control.doublePress == nil && control.longPress == nil {
                 phases[event.index] = .holding
                 transitions.append(.begin(index: event.index, entries: control.press))

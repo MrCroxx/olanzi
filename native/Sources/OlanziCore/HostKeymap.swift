@@ -4,6 +4,7 @@ public enum HostKeymapError: LocalizedError, Equatable {
     case unsupportedVersion
     case invalidControls
     case invalidTiming
+    case invalidLongPressTapCount
     case unsupportedGesture
     case invalidName
     case tooLarge
@@ -13,6 +14,7 @@ public enum HostKeymapError: LocalizedError, Equatable {
         case .unsupportedVersion: return "配置版本不受支持。"
         case .invalidControls: return "配置必须包含且仅包含六个控件，每个控件只能出现一次。"
         case .invalidTiming: return "双击间隔应为 0.15–0.5 秒，长按阈值应为 0.3–2 秒，且长按阈值必须大于双击间隔。"
+        case .invalidLongPressTapCount: return "长按连按次数应为 2–20 次。"
         case .unsupportedGesture: return "旋钮转动不支持双击或长按动作。"
         case .invalidName: return "配置名称不能为空，且不能超过 80 个字符。"
         case .tooLarge: return "配置文件不能超过 32 KiB。"
@@ -21,7 +23,7 @@ public enum HostKeymapError: LocalizedError, Equatable {
 }
 
 public enum LongPressBehavior: String, Codable, CaseIterable, Identifiable, Sendable {
-    case hold, tap
+    case hold, tap, burst
     public var id: Self { self }
 }
 
@@ -31,18 +33,20 @@ public struct ControlActionMap: Codable, Equatable, Sendable {
     public var doublePress: [KeyEntry]?
     public var longPress: [KeyEntry]?
     public var longPressBehavior: LongPressBehavior
+    public var longPressTapCount: Int
 
     public init(index: Int, press: [KeyEntry], doublePress: [KeyEntry]? = nil,
-                longPress: [KeyEntry]? = nil, longPressBehavior: LongPressBehavior = .hold) {
+                longPress: [KeyEntry]? = nil, longPressBehavior: LongPressBehavior = .hold, longPressTapCount: Int = 2) {
         self.index = index
         self.press = press
         self.doublePress = doublePress
         self.longPress = longPress
         self.longPressBehavior = longPressBehavior
+        self.longPressTapCount = longPressTapCount
     }
 
     private enum CodingKeys: String, CodingKey {
-        case index, press, doublePress, longPress, longPressBehavior
+        case index, press, doublePress, longPress, longPressBehavior, longPressTapCount
     }
 
     public init(from decoder: Decoder) throws {
@@ -53,6 +57,7 @@ public struct ControlActionMap: Codable, Equatable, Sendable {
         longPress = try values.decodeIfPresent([KeyEntry].self, forKey: .longPress)
         // 旧配置没有该字段，其长按动作一直保持到物理松开。
         longPressBehavior = try values.decodeIfPresent(LongPressBehavior.self, forKey: .longPressBehavior) ?? .hold
+        longPressTapCount = try values.decodeIfPresent(Int.self, forKey: .longPressTapCount) ?? 2
     }
 }
 
@@ -91,6 +96,7 @@ public struct HostKeymap: Codable, Equatable, Sendable {
               (0.15...0.5).contains(doublePressWindow), (0.3...2).contains(longPressThreshold),
               longPressThreshold > doublePressWindow else { throw HostKeymapError.invalidTiming }
         for control in controls {
+            guard (2...20).contains(control.longPressTapCount) else { throw HostKeymapError.invalidLongPressTapCount }
             guard control.index < 4 || (control.doublePress == nil && control.longPress == nil && control.longPressBehavior == .hold) else {
                 throw HostKeymapError.unsupportedGesture
             }

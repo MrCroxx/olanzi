@@ -271,3 +271,14 @@
 "默认键位" = "Default Keys";
 "，" = ", ";
 "，已选中" = ", selected";
+"连按" = "Repeat";
+"连按 %d 次" = "Tap %d times";
+"%d 次" = "%d times";
+"增加次数" = "Increase count";
+"减少次数" = "Decrease count";
+"连按次数" = "Tap count";
+"连按次数：2–20 次。" = "Tap count: 2–20.";
+"长按连按次数应为 2–20 次。" = "Long-press tap count must be between 2 and 20.";
+"达到长按阈值后连按 Fn %d 次；松开后仍完成本组，继续按住不会重复。" = "Tap Fn %d times after the long-press threshold. Releasing the control still completes the sequence; continuing to hold does not repeat it.";
+"达到长按时间后连按 %d 次；松开后仍完成本组，继续按住不会重复。" = "Tap %d times after the long-press threshold. Releasing the control still completes the sequence; continuing to hold does not repeat it.";
+"设置双击或长按后，单击会等待手势判定。长按达到设定时间后，可保持按住、短按一次或连按指定次数。" = "With double or long press configured, single presses wait for gesture recognition. Long presses can hold, tap once, or tap a set number of times.";

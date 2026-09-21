@@ -309,7 +309,7 @@ struct ContentView: View {
     private func gestureAssignmentHelp(_ index: Int, gesture: AssignmentGesture, title: String) -> String {
         var help = model.lf("%@ · %@：%@", model.controlName(index), model.gestureTitle(gesture), title)
         if gesture == .longPress, model.entries(index, gesture: gesture) != nil {
-            help += " · " + model.l(model.longPressBehavior(index: index) == .hold ? "保持按住" : "短按一次")
+            help += " · " + model.longPressBehaviorLabel(index: index)
         }
         return help
     }
@@ -343,18 +343,7 @@ struct ContentView: View {
                 .font(.system(size: 16)).foregroundStyle(Palette.accent)
             Spacer()
             if model.gesture == .longPress && model.selected < 4 && combinationTarget == nil {
-                Picker(model.l("触发方式"), selection: Binding(
-                    get: { model.longPressBehavior() },
-                    set: { _ = model.setLongPressBehavior($0) }
-                )) {
-                    Text(model.l("保持按住")).tag(LongPressBehavior.hold)
-                    Text(model.l("短按一次")).tag(LongPressBehavior.tap)
-                }
-                .pickerStyle(.segmented).labelsHidden().frame(width: 208)
-                .disabled(!model.canEdit)
-                .help(model.l(model.longPressBehavior() == .hold
-                    ? "达到长按时间后保持按住，松开时释放。"
-                    : "达到长按时间后短按一次，继续按住不会重复。"))
+                longPressOptions
             }
             if combinationTarget != nil { combinationEditor }
             else {
@@ -378,12 +367,48 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(model.l("按键如何响应")).font(.headline)
                     Text(model.l("只设置单击时，按下立即生效，松开释放。"))
-                    Text(model.l("设置双击或长按后，单击会等待手势判定。长按达到设定时间后，可保持按住或短按一次。"))
+                    Text(model.l("设置双击或长按后，单击会等待手势判定。长按达到设定时间后，可保持按住、短按一次或连按指定次数。"))
                     Text(model.l("未设置的手势不参与判定。“未分配”则保留手势，但不执行动作。"))
                     if let hint = model.fnBehaviorHint { Text(hint).foregroundStyle(Palette.accent) }
                 }.font(.body).padding(24).frame(width: 360)
             }
         }
+    }
+    private var longPressOptions: some View {
+        HStack(spacing: 10) {
+            Picker(model.l("触发方式"), selection: Binding(
+                get: { model.longPressBehavior() },
+                set: { _ = model.setLongPressBehavior($0) }
+            )) {
+                Text(model.l("保持按住")).tag(LongPressBehavior.hold)
+                Text(model.l("短按一次")).tag(LongPressBehavior.tap)
+                Text(model.l("连按")).tag(LongPressBehavior.burst)
+            }
+            .pickerStyle(.menu).labelsHidden().frame(width: 126)
+            .help(model.longPressBehaviorHelp)
+            if model.longPressBehavior() == .burst {
+                HStack(spacing: 6) {
+                    Button { model.setLongPressTapCount(model.longPressTapCount() - 1) } label: {
+                        Image(systemName: "minus").frame(width: 22, height: 26)
+                    }
+                    .disabled(model.longPressTapCount() <= 2)
+                    .accessibilityLabel(model.l("减少次数"))
+                    Text(model.lf("%d 次", model.longPressTapCount()))
+                        .font(.system(size: 14, weight: .medium)).monospacedDigit()
+                        .fixedSize().frame(minWidth: 42)
+                        .accessibilityLabel(model.l("连按次数"))
+                        .accessibilityValue(model.lf("%d 次", model.longPressTapCount()))
+                    Button { model.setLongPressTapCount(model.longPressTapCount() + 1) } label: {
+                        Image(systemName: "plus").frame(width: 22, height: 26)
+                    }
+                    .disabled(model.longPressTapCount() >= 20)
+                    .accessibilityLabel(model.l("增加次数"))
+                }
+                .buttonStyle(.plain).padding(.horizontal, 5)
+                .background(Palette.surface, in: RoundedRectangle(cornerRadius: 6))
+                .help(model.l("连按次数：2–20 次。"))
+            }
+        }.disabled(!model.canEdit)
     }
     private var recordingPreview: String {
         if let error = recorder.error { return model.displayError(error) }

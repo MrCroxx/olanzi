@@ -260,9 +260,11 @@ final class AppModel: ObservableObject {
         guard selected < 4,
               entries(selected, gesture: gesture)?.contains(where: { $0.type == 2 && $0.code == 1 }) == true else { return nil }
         if gesture == .longPress {
-            return longPressBehavior() == .tap
-                ? l("达到长按阈值后短按一次 Fn；继续按住不会重复触发。")
-                : l("达到长按阈值后按住 Fn，物理按键松开时释放。")
+            switch longPressBehavior() {
+            case .hold: return l("达到长按阈值后按住 Fn，物理按键松开时释放。")
+            case .tap: return l("达到长按阈值后短按一次 Fn；继续按住不会重复触发。")
+            case .burst: return lf("达到长按阈值后连按 Fn %d 次；松开后仍完成本组，继续按住不会重复。", longPressTapCount())
+            }
         }
         if gesture == .press, let control = control(selected), control.doublePress == nil, control.longPress == nil {
             return l("Fn 跟随物理按键持续按住，松开时释放。按住呼出输入法无需额外设置长按。")
@@ -300,6 +302,34 @@ final class AppModel: ObservableObject {
     }
     func longPressBehavior(index: Int? = nil) -> LongPressBehavior {
         control(index ?? selected)?.longPressBehavior ?? .hold
+    }
+    func longPressTapCount(index: Int? = nil) -> Int {
+        control(index ?? selected)?.longPressTapCount ?? 2
+    }
+    func longPressBehaviorLabel(index: Int? = nil) -> String {
+        switch longPressBehavior(index: index) {
+        case .hold: return l("保持按住")
+        case .tap: return l("短按一次")
+        case .burst: return lf("连按 %d 次", longPressTapCount(index: index))
+        }
+    }
+    var longPressBehaviorHelp: String {
+        switch longPressBehavior() {
+        case .hold: return l("达到长按时间后保持按住，松开时释放。")
+        case .tap: return l("达到长按时间后短按一次，继续按住不会重复。")
+        case .burst: return lf("达到长按时间后连按 %d 次；松开后仍完成本组，继续按住不会重复。", longPressTapCount())
+        }
+    }
+    @discardableResult
+    func setLongPressTapCount(_ count: Int, index: Int? = nil) -> Bool {
+        let index = index ?? selected
+        guard (0..<4).contains(index), canEdit, var map = keymap,
+              let position = map.controls.firstIndex(where: { $0.index == index }) else { return false }
+        map.controls[position].longPressTapCount = count
+        do { try map.validate() }
+        catch { notice = error.localizedDescription; return false }
+        updateDraft(map)
+        return true
     }
     @discardableResult
     func setLongPressBehavior(_ behavior: LongPressBehavior, index: Int? = nil) -> Bool {

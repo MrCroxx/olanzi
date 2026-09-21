@@ -124,6 +124,11 @@ final class VendorKeyBridge {
             } catch {
                 failed = true
                 fault = error.localizedDescription
+                // 任意边沿失败即取消该控件的后续连按，补 up 仍走现有释放重试机制。
+                // 不能因此释放另一个控件仍持有的共享键。
+                switch transition {
+                case .begin(let index, _), .end(let index): router.cancel(index: index)
+                }
             }
         }
         if completed && !failed && pendingReleases.isEmpty { fault = nil }

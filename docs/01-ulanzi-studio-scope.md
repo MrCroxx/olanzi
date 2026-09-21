@@ -1,120 +1,120 @@
-# Ulanzi Studio 逆向 · 第一期：职责边界
-> 🌐 [English](01-ulanzi-studio-scope.en.md)
+# Reverse Engineering Ulanzi Studio · Phase 1: Scope and Responsibility Boundaries
+> 🌐 [中文](01-ulanzi-studio-scope.zh.md)
 
-> 目标：搞清楚 **Ulanzi Studio 到底做了什么、哪些归它管、哪些不归它管**，为写一个开源替代客户端划定范围。
+> Goal: establish **what Ulanzi Studio actually does, what falls under it, and what does not**, in order to define the scope of an open-source replacement client.
 >
-> 被测对象：macOS 上的 `Ulanzi Studio 3.3.9`（主程序名 `UlanziDeck`）
-> 硬件：Ulanzi Vibe Key（USB 无线麦克风套装，dongle 产品名 `AU05`）
-> 方法：静态分析（符号表 / ObjC 元数据 / 反汇编）+ 运行时抓包（HID / lsof / WebSocket 探测）
+> Subject: `Ulanzi Studio 3.3.9` on macOS (main executable name `UlanziDeck`)
+> Hardware: Ulanzi Vibe Key (USB wireless microphone kit, dongle product name `AU05`)
+> Method: static analysis (symbol table / ObjC metadata / disassembly) + runtime capture (HID / lsof / WebSocket probing)
 >
-> 标注约定：**[CONFIRMED]** = 有直接证据（实测或二进制字面量）；**[INFERRED]** = 由间接证据推断，待验证。
+> Tagging convention: **[CONFIRMED]** = direct evidence (measured data or binary literal); **[INFERRED]** = inferred from indirect evidence, to be verified.
 >
-> 📚 文档集：[README](../README.md) · **01 职责边界** · [02 协议](02-vibekey-protocol.md) · [03 工具手册](03-tool-manual.md) · [04 逆向方法论](04-methodology.md) · [05 验证记录](05-verification-log.md)
+> 📚 Docs set: [README](../README.md) · **01 Scope and Responsibility Boundaries** · [02 Protocol](02-vibekey-protocol.md) · [03 Tool Manual](03-tool-manual.md) · [04 Reverse-Engineering Methodology](04-methodology.md) · [05 Verification Log](05-verification-log.md)
 >
-> ⚠️ 本文是**第一期**快照（写于协议解出之前），部分"待确认"项**已完成**，见 §5 与 [02](02-vibekey-protocol.md)。
+> ⚠️ This document is a **Phase 1** snapshot (written before the protocol was solved); some "to be confirmed" items are **already done**, see §5 and [02](02-vibekey-protocol.md).
 
 ---
 
-## 0. 结论速览（先看这个）
+## 0. Conclusions at a Glance (read this first)
 
-| 问题 | 结论 |
+| Question | Conclusion |
 |---|---|
-| Vibe Key 的按键是怎么传给电脑的？ | **标准 USB HID 键盘报文**，不需要任何私有协议 **[CONFIRMED]** |
-| 那 Ulanzi Studio 管什么？ | **管输出**（指示灯/状态/LED/固件 OTA）和**配置**（profile、绑定、亮度） |
-| Vibe Coding 的 AI 状态怎么到设备上的？ | 对 **WiFi 设备**可以绕过 Studio 直接 HTTP；对 **Vibe Key（纯 USB）必须经过 Studio** **[INFERRED，见 §4.2]** |
-| 插件系统是什么？ | 本地 WebSocket，`127.0.0.1:3906`，**无鉴权、无路径路由**，协议可完全复刻 **[CONFIRMED]** |
-| 能不能只写一个替代 Studio？ | 可以，但必须复刻 `kwdm.dylib` 的 HID 私有协议 —— **✅ 已完成，见 [02](02-vibekey-protocol.md)** |
+| How do Vibe Key's keys reach the computer? | **Standard USB HID keyboard reports**; no private protocol needed **[CONFIRMED]** |
+| Then what does Ulanzi Studio manage? | **Output** (indicator light / status / LED / firmware OTA) and **configuration** (profiles, bindings, brightness) |
+| How does Vibe Coding's AI state reach the device? | For **WiFi devices**, plain HTTP can bypass Studio; for **Vibe Key (USB-only), Studio is mandatory** **[INFERRED, see §4.2]** |
+| What is the plugin system? | A local WebSocket at `127.0.0.1:3906`, **no authentication, no path routing**; the protocol can be fully replicated **[CONFIRMED]** |
+| Can we just write a Studio replacement? | Yes, but the private HID protocol in `kwdm.dylib` must be replicated — **✅ Done, see [02](02-vibekey-protocol.md)** |
 
-**一句话**：Ulanzi Studio 的核心价值不在"按键输入"（那是设备固件送的免费键盘），而在
-**① 把 AI agent 状态翻译成指示灯效果**、**② 固件 OTA**、**③ 插件生态与云市场**。
+**In one sentence**: Ulanzi Studio's core value is not "key input" (that is a free keyboard supplied by the device firmware), but
+**① translating AI agent state into indicator light effects**, **② firmware OTA**, and **③ the plugin ecosystem and cloud marketplace**.
 
 ---
 
-## 1. 程序组成
+## 1. Application Composition
 
-### 1.1 基本信息 **[CONFIRMED]**
+### 1.1 Basic Information **[CONFIRMED]**
 
-| 项 | 值 |
+| Item | Value |
 |---|---|
-| 版本 | `3.3.9`（`version.txt`、crashpad `AppVersion=3.3.9`） |
-| 主二进制 | `/Applications/Ulanzi Studio.app/Contents/MacOS/UlanziDeck`（62 MB，Mach-O arm64，**未 strip**） |
-| UI 框架 | Qt 6（QtQuick / QtWebEngine / QtWebChannel 全套） |
-| 单实例 | `QtSingleApplication` + `qtlocalpeer` / `qtlockedfile` |
-| 数据目录 | `~/Library/Application Support/Ulanzi/UlanziDeck/` |
-| 偏好设置 | `~/Library/Preferences/com.ulanzi.UlanziDeck.plist` |
+| Version | `3.3.9` (`version.txt`, crashpad `AppVersion=3.3.9`) |
+| Main binary | `/Applications/Ulanzi Studio.app/Contents/MacOS/UlanziDeck` (62 MB, Mach-O arm64, **not stripped**) |
+| UI framework | Qt 6 (full QtQuick / QtWebEngine / QtWebChannel stack) |
+| Single instance | `QtSingleApplication` + `qtlocalpeer` / `qtlockedfile` |
+| Data directory | `~/Library/Application Support/Ulanzi/UlanziDeck/` |
+| Preferences | `~/Library/Preferences/com.ulanzi.UlanziDeck.plist` |
 
-### 1.2 关键依赖（决定它能干什么） **[CONFIRMED]**
+### 1.2 Key Dependencies (they determine what it can do) **[CONFIRMED]**
 
-| 组件 | 作用 |
+| Component | Role |
 |---|---|
-| `kwdm.dylib`（Kehwin SDK，**运行时 QLibrary 加载**） | **Vibe / Dial 家族的私有 HID 协议** ← 核心 |
-| `libhidapi.0.14.0.dylib` | **仅用于老款 Ulanzi Deck**：`hid_enumerate(0x2207, 0x0019)` |
-| `libUlanziFZBle.dylib` | BLE 设备（TC002 / K6500 灯 + 可能的配网） |
-| `libcountly.dylib` | 埋点统计 |
-| `crashpad_handler` | 崩溃上报 |
-| `libmars-boost.a` + `xlog` | 腾讯 mars xlog 日志（**加密，暂不可读**） |
-| `QtBluetooth` / `QtSerialPort` | BLE / 串口（**串口实际未使用**） |
+| `kwdm.dylib` (Kehwin SDK, **loaded at runtime via QLibrary**) | **Private HID protocol of the Vibe / Dial family** ← core |
+| `libhidapi.0.14.0.dylib` | **Only for older Ulanzi Deck models**: `hid_enumerate(0x2207, 0x0019)` |
+| `libUlanziFZBle.dylib` | BLE devices (TC002 / K6500 lights + possibly network provisioning) |
+| `libcountly.dylib` | Analytics / telemetry |
+| `crashpad_handler` | Crash reporting |
+| `libmars-boost.a` + `xlog` | Tencent mars xlog logging (**encrypted, not readable yet**) |
+| `QtBluetooth` / `QtSerialPort` | BLE / serial port (**the serial port is actually unused**) |
 
 ---
 
-## 2. Ulanzi Studio 管什么
+## 2. What Ulanzi Studio Manages
 
-### 2.1 设备接入与固件
+### 2.1 Device Onboarding and Firmware
 
-- 维护设备列表、型号识别、profile 持久化（`ProfilesV2/`）、亮度、字体、图标 **[CONFIRMED]**
-- **固件 OTA**：`VibeOtaManager` 负责 Vibe 家族的**链式升级**（先 dongle `AU05_USB` 后 mic `AU05_Device`，20 秒无进度则中止，出错后重启两端）**[CONFIRMED]**
-  - 升级包走 `kwdm` 的 `FirmwareFrame` / `UploadImageFrame` / `calc_crc16-8`，**不走 HTTP**
-  - HTTP 只用来**问有没有新版本**：`/vibekey/firmware/checkUpdate?deviceSn=&pid=&ver=&lang=`
-- 设备发现：**UDP 55555**（`DeviceWatcherManager`，`ShareAddress`）。**没有 mDNS** **[CONFIRMED]**
+- Maintains the device list, model detection, profile persistence (`ProfilesV2/`), brightness, fonts, icons **[CONFIRMED]**
+- **Firmware OTA**: `VibeOtaManager` handles the Vibe family's **chained upgrade** (dongle `AU05_USB` first, then mic `AU05_Device`; aborts after 20 seconds without progress; restarts both ends on error) **[CONFIRMED]**
+  - Upgrade payloads go through `kwdm`'s `FirmwareFrame` / `UploadImageFrame` / `calc_crc16-8`, **not over HTTP**
+  - HTTP is used only to **ask whether a new version exists**: `/vibekey/firmware/checkUpdate?deviceSn=&pid=&ver=&lang=`
+- Device discovery: **UDP 55555** (`DeviceWatcherManager`, `ShareAddress`). **No mDNS** **[CONFIRMED]**
 
-### 2.2 插件系统（`127.0.0.1:3906`）**[CONFIRMED]**
+### 2.2 Plugin System (`127.0.0.1:3906`) **[CONFIRMED]**
 
-- 裸 `QWebSocketServer`，**只监听 localhost，`ws://` 无 TLS**
-- **没有任何路径路由**——`/`、`/index.html`、`/api` 一律等价（实测三个路径都返回 `101 Switching Protocols`）
-- 插件握手：`{"cmd":"connected","code":0,"uuid":"<plugin-uuid>"}`，`code` 必填（int `0` 或 `"0"`），**不回包**
-- **无鉴权**：任何本地进程都能冒充任意 `uuid`
-- 应用→插件命令：`run` / `add` / `paramfromapp` / `setactive` / `clear` / `rotateEvent`
-- 插件→应用命令：`setImage` / `setTitle` / `setState` / `setSettings` / `hotkey` / `toast` / `showAlert` / `openurl` / `sendToPlugin` / `subscribeAiAgentState` / `getAiAgentSessions` 等
+- A bare `QWebSocketServer`, **listening on localhost only, plain `ws://` with no TLS**
+- **No path routing whatsoever** — `/`, `/index.html`, `/api` are all equivalent (measured: all three paths return `101 Switching Protocols`)
+- Plugin handshake: `{"cmd":"connected","code":0,"uuid":"<plugin-uuid>"}`; `code` is required (int `0` or `"0"`); **no response is sent**
+- **No authentication**: any local process can impersonate any `uuid`
+- App → plugin commands: `run` / `add` / `paramfromapp` / `setactive` / `clear` / `rotateEvent`
+- Plugin → app commands: `setImage` / `setTitle` / `setState` / `setSettings` / `hotkey` / `toast` / `showAlert` / `openurl` / `sendToPlugin` / `subscribeAiAgentState` / `getAiAgentSessions` and more
 
-→ **这是最容易复刻的部分**：社区已有 Elgato Stream Deck 的同类实现（Ulanzi 的 `deps/DeckSDK/` 就是 Stream Deck SDK 的血统）。
+→ **This is the easiest part to replicate**: the community already has equivalent implementations for the Elgato Stream Deck (Ulanzi's `deps/DeckSDK/` is descended from the Stream Deck SDK).
 
-### 2.3 云服务 **[CONFIRMED]**
+### 2.3 Cloud Services **[CONFIRMED]**
 
-| 域名 | 用途 |
+| Domain | Purpose |
 |---|---|
-| `api.ulanzistudio.com/api` | 登录 / 用户信息 / 短信验证码 / 忘记密码 / 日志上传 |
-| `ulanzistudio.com` | 产品列表、图标、下载、公告、插件市场、**crashpad 上传** |
-| `countly.ulanzistudio.com` | 埋点（app key `e7655fcbc00acffc5ca86f196bba2a68cfc8001b`） |
+| `api.ulanzistudio.com/api` | Login / user info / SMS verification code / forgot password / log upload |
+| `ulanzistudio.com` | Product list, icons, downloads, announcements, plugin marketplace, **crashpad upload** |
+| `countly.ulanzistudio.com` | Analytics (app key `e7655fcbc00acffc5ca86f196bba2a68cfc8001b`) |
 
-### 2.4 Vibe Coding 集成（`ustudio-cli`）
+### 2.4 Vibe Coding Integration (`ustudio-cli`)
 
-这是本期的重点，结构是**三段式**：
+This was the focus of this phase; the structure has **three stages**:
 
 ```
-①  AI 编码 agent 触发 hook
+①  AI coding agent triggers hook
         ↓  (stdin JSON)
-②  ustudio-cli-hook  (shell wrapper → 编译好的 ustudio-cli 二进制)
-        ↓  QLocalSocket，socket 名 "ulanzistudio_cli"
-③  UlanziDeck  (必须正在运行，否则 CLI 直接报错退出)
+②  ustudio-cli-hook  (shell wrapper → compiled ustudio-cli binary)
+        ↓  QLocalSocket, socket name "ulanzistudio_cli"
+③  UlanziDeck  (must be running, otherwise the CLI errors out and exits)
         ↓
-④  kwdm.dylib  →  USB HID 厂商通道  →  设备
+④  kwdm.dylib  →  USB HID vendor channel  →  device
 ```
 
-> ⚠️ **重要修正（第二期）**：网上/早期分析里常见的
-> `ustudio-cli` 直接 `POST http://<设备IP>/events` 那条路径是**已废弃的遗留代码**。
-> `hooks/device-hook.js` 与 `installers/device-install.js` 是**孤儿文件，没有任何调用方**；
-> 而且 `install.js` 里的 `isLegacyLocalStateCommand()` 会**主动删除**任何匹配
+> ⚠️ **Important correction (Phase 2)**: the path commonly seen online and in early analyses, where
+> `ustudio-cli` directly does `POST http://<device-IP>/events`, is **deprecated legacy code**.
+> `hooks/device-hook.js` and `installers/device-install.js` are **orphan files with no callers**;
+> moreover `isLegacyLocalStateCommand()` in `install.js` **actively deletes** any hook entry matching
 > `https?://(127.0.0.1|localhost):\d+` + `"state":"(thinking|streaming|done|idle|error)"`
-> 的 hook 条目——厂商在主动清理这条老路。
-> 证据：整个 `~/Library/Application Support/Ulanzi/` 目录树里
-> **IPv4 字面量 0 命中**；主二进制里**没有** `--device-ip` / `ai-tool-state` / `device-hook` 字符串。
+> — the vendor is actively cleaning up this old path.
+> Evidence: **0 hits for IPv4 literals** across the entire `~/Library/Application Support/Ulanzi/`
+> directory tree; the main binary contains **no** `--device-ip` / `ai-tool-state` / `device-hook` strings.
 >
-> **真实链路是本地 socket，不是网络。**
+> **The real chain is a local socket, not the network.**
 
-- 支持 **8 个 agent**：`claude-code`、`codex`、`gemini-cli`、`cursor-agent`、`codebuddy`、`kiro-cli`、`kimi-cli`、`copilot-cli` **[CONFIRMED]**
-- 事件 → 状态映射（`hooks/mappings.js`）**[CONFIRMED]**：
+- Supports **8 agents**: `claude-code`, `codex`, `gemini-cli`, `cursor-agent`, `codebuddy`, `kiro-cli`, `kimi-cli`, `copilot-cli` **[CONFIRMED]**
+- Event → state mapping (`hooks/mappings.js`) **[CONFIRMED]**:
 
-  | 状态 | 触发事件（claude-code） |
+  | State | Triggering event (claude-code) |
   |---|---|
   | `idle` | SessionStart |
   | `thinking` | UserPromptSubmit |
@@ -124,228 +124,228 @@
   | `notification` | Notification / PermissionRequest |
   | `sweeping` | PreCompact |
 
-- 已确认写入你机器上的 `~/.claude/settings.json`（12 个 hook 事件全部注册）**[CONFIRMED]**
-- 官方声明会**脱敏**：只转发白名单元数据，不记录 prompt / transcript / 工具入参 **[CONFIRMED，来自 manifest.json]**
+- Confirmed to write to `~/.claude/settings.json` on your machine (all 12 hook events registered) **[CONFIRMED]**
+- The vendor states it **anonymizes** data: only allowlisted metadata is forwarded, prompts / transcripts / tool arguments are never recorded **[CONFIRMED, from manifest.json]**
 
 ---
 
-## 3. 不归它管的部分（重要！）
+## 3. What Is Out of Scope (important!)
 
-这是本期最有价值的发现。
+This is the most valuable finding of this phase.
 
-### 3.1 ⭐ 设备按键输入完全不需要私有协议 **[CONFIRMED]**
+### 3.1 ⭐ Device Key Input Needs No Private Protocol At All **[CONFIRMED]**
 
-Vibe Key 的 dongle（`AU05`）是一个 **USB 复合设备**，一次枚举出这些接口：
+The Vibe Key dongle (`AU05`) is a **USB composite device** that enumerates the following interfaces at once:
 
-| 接口 | 用途 | 说明 |
+| Interface | Purpose | Notes |
 |---|---|---|
-| USB Audio | 麦克风输入（2 声道 48 kHz） | 无线麦的声音就从这个口进来 |
-| HID 接口 2 | **键盘 + 鼠标 + 多媒体键** | Report ID 1/2/3，标准 HID |
-| HID 接口 3 | **厂商自定义控制通道** | Usage Page `0xFFFC`，Report ID `0x55`，63 字节 |
+| USB Audio | Microphone input (2 channels, 48 kHz) | Audio from the wireless mic comes in through this interface |
+| HID interface 2 | **Keyboard + mouse + multimedia keys** | Report ID 1/2/3, standard HID |
+| HID interface 3 | **Vendor-defined control channel** | Usage Page `0xFFFC`, Report ID `0x55`, 63 bytes |
 
-**实测证据**：让你依次按 4 个键和旋钮，捕获到 **12 条 `rid=0x03` 标准键盘报告**（6 按 + 6 抬），
-每条都对应你的一次动作，**厂商通道一条都没动**：
+**Measured evidence**: having you press the 4 keys and the knob in sequence captured **12 standard keyboard reports with `rid=0x03`** (6 presses + 6 releases),
+each one corresponding to one of your actions, with **not a single frame on the vendor channel**:
 
-| 你的动作 | 捕获到的键码 |
+| Your action | Captured key code |
 |---|---|
-| 按第 1 个键 | `0x01` |
-| 按第 2 个键 | `0x28` Enter |
-| 按第 3 个键 | `0x29` Esc |
-| 旋钮右拧 | `0x4f` → |
-| 旋钮右拧（第二次） | `0x2a` Backspace |
-| 按下旋钮 | `0x46` PrintScreen |
+| Press key 1 | `0x01` |
+| Press key 2 | `0x28` Enter |
+| Press key 3 | `0x29` Esc |
+| Knob twist → right | `0x4f` → |
+| Knob twist → right (second time) | `0x2a` Backspace |
+| Knob press | `0x46` PrintScreen |
 
-> **推论**：要做一个开源客户端来"读按键"，用标准 HID 就行，**零逆向成本**。
-> 而且设备还能直接向 Mac **注入键鼠**（这就是它能控制 Claude Code 的方式）。
+> **Corollary**: to build an open-source client that "reads keys", standard HID is enough — **zero reverse-engineering cost**.
+> And the device can also **inject keyboard and mouse input** directly into the Mac (this is how it controls Claude Code).
 >
-> ✅ **已完成**：映射表已通过受控顺序实验固定，并与设备端配置表交叉验证。
-> 6 个控件 = `01 / 28 / 29 / 46 / 4f / 2a`，见 [02 §5](02-vibekey-protocol.md)。
-> **并且这些键码现在是可改写的** —— 见 [02 §6 可编程按键表](02-vibekey-protocol.md)。
+> ✅ **Done**: the mapping table has been pinned down through controlled ordered experiments and cross-verified against the on-device configuration table.
+> 6 controls = `01 / 28 / 29 / 46 / 4f / 2a`, see [02 §5](02-vibekey-protocol.md).
+> **And these key codes are now writable** — see [02 §6 Programmable Key Table](02-vibekey-protocol.md).
 
-### 3.2 厂商通道是**周期心跳**，不是按键 **[CONFIRMED]**
+### 3.2 The Vendor Channel Is a **Periodic Heartbeat**, Not Key Presses **[CONFIRMED]**
 
-厂商接口（接口 3）在你操作期间只发了 4 帧，时间戳间隔为
-`10.100s / 10.100s / 10.100s` —— **精确周期**，与按键时间无关联。
+During your interaction the vendor interface (interface 3) sent only 4 frames, with timestamp intervals of
+`10.100s / 10.100s / 10.100s` — an **exact period**, uncorrelated with key press times.
 
-载荷结构固定：
-
-```
-rid=0x55 | 前 8 字节（每次不同） | 后 55 字节（每次相同）
-                                  38 90 c4 99 a3 60 aa ad  (重复 6 次 + 截断 7 字节)
-```
-
-- 这串固定尾串**在二进制里搜不到**（0 命中）→ 运行时算出来的
-- 4 帧中有 3 帧前 8 字节**完全相同** → 无随机 IV，**加密是确定性的**
-- 高度怀疑是 **8 字节分组密码 ECB + 静态 IV**，明文大部分是固定/零值
-
-### 3.3 私有协议的真实边界
-
-`kwdm.dylib` 是 Objective-C 写的，**保留了完整的类型编码**，直接把线上结构体布局暴露了：
+The payload structure is fixed:
 
 ```
-st_small_base_com_msg = { st_base_header(1B) | union { ... } }  总长 63 字节
+rid=0x55 | first 8 bytes (different every time) | last 55 bytes (identical every time)
+                                  38 90 c4 99 a3 60 aa ad  (repeated 6 times + 7 bytes truncated)
 ```
 
-正好等于我们抓到的 63 字节负载。五个 union 分支：
+- This fixed tail string **cannot be found in the binary** (0 hits) → it is computed at runtime
+- In 3 of the 4 frames the first 8 bytes are **byte-identical** → no random IV, **the encryption is deterministic**
+- Strongly suspected to be an **8-byte block cipher in ECB mode + a static IV**, with most of the plaintext fixed / zero
 
-| 分支 | 方向 | 内容 |
+### 3.3 The Real Boundary of the Private Protocol
+
+`kwdm.dylib` is written in Objective-C and **retains complete type encodings**, which exposes the on-wire struct layout directly:
+
+```
+st_small_base_com_msg = { st_base_header(1B) | union { ... } }  total length 63 bytes
+```
+
+This is exactly the 63-byte payload we captured. The five union branches:
+
+| Branch | Direction | Content |
 |---|---|---|
-| `st_usb_singel_cfg` | ↔ dongle | 版本、flash id、**dongle SN**、心跳、按键长按功能、重启、**加密字段** |
-| `st_device_singel_cfg` | ↔ 设备 | **超大配置表**（见下） |
-| `st_msg_interactive_pc` | 设备 → PC | **按键消息**、滚轮事件、电量、LED 效果、**麦克风降噪等级** |
-| `mic_sbc_data_t` | 麦克风音频 | SBC 编码音频（32 字节） |
-| `st_upgrade_software_msg` | OTA | 连接/下载/校验/编程/结果 |
+| `st_usb_singel_cfg` | ↔ dongle | version, flash id, **dongle SN**, heartbeat, key long-press function, reboot, **encryption fields** |
+| `st_device_singel_cfg` | ↔ device | **oversized configuration table** (see below) |
+| `st_msg_interactive_pc` | device → PC | **key messages**, wheel events, battery, LED effects, **mic noise reduction level** |
+| `mic_sbc_data_t` | mic audio | SBC-encoded audio (32 bytes) |
+| `st_upgrade_software_msg` | OTA | connect / download / verify / program / result |
 
-其中 **`st_device_singel_cfg`** 里的字段名几乎是一份需求文档：
+The field names inside **`st_device_singel_cfg`** read almost like a requirements document:
 
-- **`ai_index_cfg_t`** ← AI 状态索引（Vibe Coding 的核心）
-- **`led_hooks_param_cfg_t`** ← hook 事件的 LED 参数
-- `led_light_param_cfg_t`、`sys_work_led_cfg_t`
-- **`sys_mic_nr_level_t`** ← 麦克风降噪
-- `mic_open_cfg_t`、`device_mic_ui_cfg_t`
-- `oled_brightness_cfg_t`、`oled_screen_off_time_cfg_t`、`cfg_lcd_git_param_t`
-- `device_uuid_cfg_t`、`device_sn_cfg_t`、`sys_mac_addr_t`、`sys_hardware_version_t`
-- `key_shortcut_msg_unit_cfg_t`、`key_shortcut_mode_cfg_t` ← **按键绑定**
+- **`ai_index_cfg_t`** ← AI state index (the core of Vibe Coding)
+- **`led_hooks_param_cfg_t`** ← LED parameters for hook events
+- `led_light_param_cfg_t`, `sys_work_led_cfg_t`
+- **`sys_mic_nr_level_t`** ← mic noise reduction
+- `mic_open_cfg_t`, `device_mic_ui_cfg_t`
+- `oled_brightness_cfg_t`, `oled_screen_off_time_cfg_t`, `cfg_lcd_git_param_t`
+- `device_uuid_cfg_t`, `device_sn_cfg_t`, `sys_mac_addr_t`, `sys_hardware_version_t`
+- `key_shortcut_msg_unit_cfg_t`, `key_shortcut_mode_cfg_t` ← **key bindings**
 
 ---
 
-## 4. 通信面总清单
+## 4. Full Inventory of Communication Surfaces
 
-| # | 通道 | 地址 / 标识 | 归属 | 可复刻性 |
+| # | Channel | Address / Identifier | Owner | Replicability |
 |---|---|---|---|---|
-| 1 | 插件 WebSocket | `127.0.0.1:3906` | Studio | ⭐⭐⭐ 极易（明文 JSON） |
-| 2 | 内部 CLI IPC | QLocalServer `ulanzistudio_cli` | Studio ↔ ustudio-cli | ⭐⭐ 中等 |
-| 3 | 设备发现 | **UDP 55555** 广播 | Studio ↔ 网络设备 | ⭐⭐⭐ 易 |
-| 4 | 设备 HTTP | `http://<ip>:<port>/events` | hook → 设备直连 | ⭐⭐⭐ 易（但 Vibe Key 用不上） |
-| 5 | **厂商 HID** | Usage Page `0xFFFC`, **Report ID `0x55`**, 63B | kwdm → Vibe Key | ⭐ **难，核心工作** |
-| 6 | 标准 HID 输入 | Report ID 1/2/3 | **设备固件** | ⭐⭐⭐ 免费 |
-| 7 | BLE GATT | `0000fff0`→`fff2/fff1`；`0000a002`→`c304/c305`；`f000ffc0`→`ffc1` | FZ BLE | ⭐⭐ 中等 |
-| 8 | 老 Deck HID | `hid_enumerate(0x2207, 0x0019)` | hidapi | ⭐⭐ 中等（只影响老设备） |
-| 9 | 云 API | `api./countly./www.ulanzistudio.com` | Studio | ⭐⭐⭐ 易（但对替代客户端非必需） |
-| 10 | 串口 | 已链接但**无实现** | — | 无需处理 |
+| 1 | Plugin WebSocket | `127.0.0.1:3906` | Studio | ⭐⭐⭐ trivial (plaintext JSON) |
+| 2 | Internal CLI IPC | QLocalServer `ulanzistudio_cli` | Studio ↔ ustudio-cli | ⭐⭐ moderate |
+| 3 | Device discovery | **UDP 55555** broadcast | Studio ↔ network devices | ⭐⭐⭐ easy |
+| 4 | Device HTTP | `http://<ip>:<port>/events` | hook → direct device connection | ⭐⭐⭐ easy (but unusable with Vibe Key) |
+| 5 | **Vendor HID** | Usage Page `0xFFFC`, **Report ID `0x55`**, 63B | kwdm → Vibe Key | ⭐ **hard, the core work** |
+| 6 | Standard HID input | Report ID 1/2/3 | **device firmware** | ⭐⭐⭐ free |
+| 7 | BLE GATT | `0000fff0`→`fff2/fff1`; `0000a002`→`c304/c305`; `f000ffc0`→`ffc1` | FZ BLE | ⭐⭐ moderate |
+| 8 | Legacy Deck HID | `hid_enumerate(0x2207, 0x0019)` | hidapi | ⭐⭐ moderate (old devices only) |
+| 9 | Cloud API | `api./countly./www.ulanzistudio.com` | Studio | ⭐⭐⭐ easy (but not required for a replacement client) |
+| 10 | Serial port | linked but **unimplemented** | — | nothing to handle |
 
-### 4.1 设备型号全集 **[CONFIRMED，来自随包 `defProfile/`]**
+### 4.1 Complete Device Model Roster **[CONFIRMED, from the bundled `defProfile/`]**
 
-| 型号 | 产品 | 控件 |
+| Model | Product | Controls |
 |---|---|---|
-| `AU05` | **Vibe Key** | **1 旋钮 + 4 键**（main / Talk / Confirm / Cancel），无屏 |
-| `AU05-X` | **Vibe Ring** | 双麦 A/B，各带左右插件槽/按键/指示灯 |
-| — | Vibe Talk | 2 插件槽 + 2 键 + 2 灯 |
-| — | Dial Mini | 1 旋钮 + 1 键 |
-| `Dial` | Dial | 3×3 + 1 旋钮 |
-| `D200` / `D200H` / `D200X` | 5×3 键盘 |
-| `20GBA9901` | Ulanzi Deck 5×3 | 5×3，走老 hidapi |
-| TC002 / K6500 | BLE 灯 |
+| `AU05` | **Vibe Key** | **1 knob + 4 keys** (main / Talk / Confirm / Cancel), no screen |
+| `AU05-X` | **Vibe Ring** | dual mics A/B, each with left/right plugin slot / key / indicator light |
+| — | Vibe Talk | 2 plugin slots + 2 keys + 2 lights |
+| — | Dial Mini | 1 knob + 1 key |
+| `Dial` | Dial | 3×3 + 1 knob |
+| `D200` / `D200H` / `D200X` | 5×3 keypad |
+| `20GBA9901` | Ulanzi Deck 5×3 | 5×3, via legacy hidapi |
+| TC002 / K6500 | BLE lights |
 
-### 4.2 ⚠️ Vibe Key 为什么绕不开 Studio **[CONFIRMED]**
+### 4.2 ⚠️ Why Vibe Key Cannot Bypass Studio **[CONFIRMED]**
 
-Vibe Key 从 Mac 的视角看是**纯 USB 设备**：
+From the Mac's point of view, Vibe Key is a **USB-only device**:
 
-- **没有网络接口**（`ifconfig` 里没有它创建的口）
-- **不参与** UDP 55555 发现
-- 设备自己上报的 `XXX SN: "" flashId: "4150…1578" MAC: "" Active: true` —— **MAC 为空**
-- 整个 App Support 目录树里 **IPv4 字面量 0 命中**
+- **No network interface** (no interface created by it appears in `ifconfig`)
+- It does **not participate** in UDP 55555 discovery
+- The device's self-reported `XXX SN: "" flashId: "4150…1578" MAC: "" Active: true` — **MAC is empty**
+- **0 hits for IPv4 literals** across the entire App Support directory tree
 
-所以对 Vibe Key 来说只有一条路：
+So for Vibe Key there is only one path:
 
-> **hook → ustudio-cli → Studio（QLocalServer）→ kwdm → USB HID → 设备指示灯**
+> **hook → ustudio-cli → Studio (QLocalServer) → kwdm → USB HID → device indicator light**
 >
-> 这条链上 **Studio 是必经之路**（CLI 在 Studio 未运行时会直接报
-> `Error: Ulanzi Studio is not running. Please start UlanziDeck first.` 并退出）
+> On this chain **Studio is unavoidable** (when Studio is not running, the CLI immediately reports
+> `Error: Ulanzi Studio is not running. Please start UlanziDeck first.` and exits)
 
-**这就是"太难用了"的根因。** 想甩掉 Studio，只有两条路：
-1. 复刻 `kwdm` 的私有 HID 协议（**推荐**，见 §6）
-2. 走标准 HID —— 但那只够读按键，驱动不了指示灯
+**This is the root cause of "it is too painful to use".** There are only two ways to get rid of Studio:
+1. Replicate `kwdm`'s private HID protocol (**recommended**, see §6)
+2. Use standard HID — but that is only enough to read keys, not to drive the indicator light
 
 ---
 
-## 5. 待办 / 需要你配合验证
+## 5. TODO / Verification Needed From You
 
-| # | 事项 | 状态 |
+| # | Item | Status |
 |---|---|---|
-| 1 | 固定"物理控件 → 键码"映射表 | ✅ **已完成**（受控实验 + 设备配置表双重确认） |
-| 2 | 确认按键是否真的注入到系统 | ✅ **已完成**（键 2 打出 Enter、键 3 打出 Esc，实测） |
-| 3 | **解密厂商 HID 通道** | ✅ **已完成**（TEA-ECB，密钥与算法全解出） |
-| 4 | `ai_index_cfg_t` 状态取值 → LED 颜色 | ⬜ 未做（第五期目标） |
-| 5 | 录音/麦克风路径是否也走私有协议 | ⬜ 未做 |
-| 6 | xlog 日志解码 | ✅ **已完成**（mars xlog，223/223 条 → 62 MB 明文） |
-| 7 | `AU03` / `AU04` 对应哪个 Vibe 型号 | ⬜ 未证实 |
-| 8 | **改写设备端按键表** | ✅ **已完成**（`01 06 50 04`，端到端验证生效） |
+| 1 | Pin down the "physical control → key code" mapping table | ✅ **Done** (dual confirmation: controlled experiment + on-device configuration table) |
+| 2 | Confirm whether key presses are really injected into the system | ✅ **Done** (measured: key 2 typed Enter, key 3 typed Esc) |
+| 3 | **Decrypt the vendor HID channel** | ✅ **Done** (TEA-ECB; key and algorithm fully recovered) |
+| 4 | `ai_index_cfg_t` state values → LED colors | ⬜ Not done (Phase 5 goal) |
+| 5 | Does the recording / microphone path also use the private protocol | ⬜ Not done |
+| 6 | xlog log decoding | ✅ **Done** (mars xlog, 223/223 records → 62 MB plaintext) |
+| 7 | Which Vibe models `AU03` / `AU04` correspond to | ⬜ Unconfirmed |
+| 8 | **Rewrite the on-device key table** | ✅ **Done** (`01 06 50 04`, verified end to end to take effect) |
 
-> 完成项的证据与原始数据见 [05 验证记录](05-verification-log.md)。
+> Evidence and raw data for the completed items are in [05 Verification Log](05-verification-log.md).
 
 ---
 
-## 6. 第二期进展：协议语义层已经解出 **[CONFIRMED]**
+## 6. Phase 2 Progress: The Protocol Semantics Layer Has Been Solved **[CONFIRMED]**
 
-### 6.1 设备身份
+### 6.1 Device Identity
 
-| 项 | 值 |
+| Item | Value |
 |---|---|
-| flashId（主键） | `<REDACTED>`（前 7 字节 ASCII = `AP53002`，型号前缀） |
+| flashId (primary key) | `<REDACTED>` (first 7 bytes as ASCII = `AP53002`, a model prefix) |
 | deviceSn | `<REDACTED>` |
-| MAC | **空** |
-| 固件版本 | dongle `4.4.2` / device `4.4.2` |
-| 存储位置 | `config/device_source.json` 的 `Devices[].UUID` |
+| MAC | **empty** |
+| Firmware version | dongle `4.4.2` / device `4.4.2` |
+| Storage location | `Devices[].UUID` in `config/device_source.json` |
 
-### 6.2 厂商 HID 通道上传的是 **JSON 字符串**
+### 6.2 What the Vendor HID Channel Carries Is a **JSON String**
 
-kwdm 通过回调把明文 JSON 交给应用：
+kwdm hands plaintext JSON to the application through a callback:
 
 ```
-DialDeviceManager::onDeviceMessage(const char *deviceId, const char *msg)   ← kwdm SDK 回调
+DialDeviceManager::onDeviceMessage(const char *deviceId, const char *msg)   ← kwdm SDK callback
   → parseAndDispatchMessage()
   → DeviceMessageHandler::onRawMessageReceived(flashId, JSON)
-  → 按 "type" 分发到 handleKeyEvent / handleBattery / handleIndicatorLightAllParams / ...
+  → dispatch by "type" to handleKeyEvent / handleBattery / handleIndicatorLightAllParams / ...
 ```
 
-即 **63 字节的 HID 负载 = 一条 JSON 文本**（这也是为什么它短小、字段名如此直白）。
+That is, **the 63-byte HID payload = one JSON text** (which is also why it is so compact and its field names are so blunt).
 
-### 6.3 设备 → 应用：消息词表（从 62 MB 明文日志全量统计）
+### 6.3 Device → App: Message Vocabulary (exhaustive count from the 62 MB plaintext log)
 
-| `type` | 出现次数 | 说明 |
+| `type` | Occurrences | Notes |
 |---|---|---|
-| `deviceKeyEvent` | 15572 | **按键/旋钮事件** |
-| `deviceBattery` | 1784 | 电量 |
-| `deviceButtonShortcutFunction2` | 1580 | 按键绑定的快捷键码 |
-| `deviceActive` | 440 | 在线状态 |
-| `deviceHooksMode` | 424 | AI hooks 模式 |
-| `deviceSN` | 420 | 序列号 |
-| `deviceIndicatorLightAllParams` | 348 | **指示灯全部参数** |
-| `deviceSleepTime` | 332+83 | 休眠时间 |
-| `deviceMotorStrength` | 332 | 马达强度 |
-| `deviceStandbyStatus` | 248 | 待机状态 |
-| `dongleVersion` / `dongleSN` | 164 / 160 | dongle 信息 |
-| `deviceVersion` | 148 | 固件版本 |
-| `deviceMicNRLevel` | 148 | **麦克风降噪等级** |
+| `deviceKeyEvent` | 15572 | **key / knob events** |
+| `deviceBattery` | 1784 | battery |
+| `deviceButtonShortcutFunction2` | 1580 | shortcut code of the key binding |
+| `deviceActive` | 440 | online status |
+| `deviceHooksMode` | 424 | AI hooks mode |
+| `deviceSN` | 420 | serial number |
+| `deviceIndicatorLightAllParams` | 348 | **all indicator light parameters** |
+| `deviceSleepTime` | 332+83 | sleep time |
+| `deviceMotorStrength` | 332 | motor strength |
+| `deviceStandbyStatus` | 248 | standby status |
+| `dongleVersion` / `dongleSN` | 164 / 160 | dongle info |
+| `deviceVersion` | 148 | firmware version |
+| `deviceMicNRLevel` | 148 | **mic noise reduction level** |
 | `deviceFlashId` | 148 | flashId |
 
-**按键报文实例：**
+**Sample key message:**
 
 ```json
 { "status" : 1, "access" : 2, "type" : "deviceKeyEvent", "index" : 3 }
 ```
 
-`index` 实测取值 **0 / 1 / 2 / 3 / 4 / 5**（对应 4 键 + 旋钮 + 按下旋钮），
-`status` = 1 按下 / 0 抬起。
+The measured `index` values are **0 / 1 / 2 / 3 / 4 / 5** (corresponding to the 4 keys + knob + knob press),
+`status` = 1 pressed / 0 released.
 
-**按键绑定报文实例（`content` 是按键码）：**
+**Sample key binding messages (`content` is the key code):**
 
 ```json
 { "access" : 0, "content" : "2A",  "type" : "deviceButtonShortcutFunction2", "index" : 3 }
 { "access" : 0, "content" : "105", "type" : "deviceButtonShortcutFunction2", "index" : 5 }
 ```
 
-### 6.4 应用 → 设备：确认的命令
+### 6.4 App → Device: Confirmed Command
 
 ```json
 { "type" : "deviceHooksMode", "status" : 0|1, "access" : 0 }
 ```
 
-由 `CliManager::aiHooksStatusFinished → onSetDeviceHooksMode` 触发，
-按 `flashId` 定位设备。**这就是"AI hooks 开关"下发到设备的那条命令。**
+Triggered by `CliManager::aiHooksStatusFinished → onSetDeviceHooksMode`,
+locating the device by `flashId`. **This is the command that delivers the "AI hooks switch" to the device.**
 
-### 6.5 完整按键处理链（实锤）
+### 6.5 Complete Key Handling Chain (hard evidence)
 
 ```
 deviceKeyEvent{index:3,status:1}
@@ -358,24 +358,24 @@ deviceKeyEvent{index:3,status:1}
  → InputSimulator::KeyDownEx(CGKeyCode 105, flags 256)
 ```
 
-**含义**：按键绑定（"快捷键功能"）**存储在设备端固件里**，
-设备既可以通过厂商通道上报 `deviceKeyEvent`，**也可以自己直接发标准键盘报文**（接口 2）。
-→ 所以 Vibe Key **完全可以脱离 Studio 当一个普通键盘用**。
+**Implication**: key bindings (the "shortcut function") are **stored in the on-device firmware**;
+the device can either report `deviceKeyEvent` over the vendor channel, **or send standard keyboard reports by itself** (interface 2).
+→ So Vibe Key **works perfectly well as an ordinary keyboard with no Studio at all**.
 
-### 6.6 附加收获：xlog 日志格式已破解 **[CONFIRMED]**
+### 6.6 Bonus Finding: The xlog Log Format Has Been Cracked **[CONFIRMED]**
 
-- 73 字节文件头：`magic(1) | seq(u16 LE) | beginHour(1) | endHour(1) | length(u32 LE) | cryptPubkey(64)`
-- `0x08` = 同步明文；`0x09` = 异步 **raw DEFLATE**（`deflateInit2(wbits=-15)` + `Z_SYNC_FLUSH`）
-- **日志没有加密**（64 字节 ECDH/TEA 密钥字段全零）
-- 已全量解码 **223/223 条记录 → 62 MB 明文**
-- 解码器：`~/ulanzi-re/tools/xlog_decode.py`
-- 这 62 MB 是本项目最有价值的取证素材
+- 73-byte file header: `magic(1) | seq(u16 LE) | beginHour(1) | endHour(1) | length(u32 LE) | cryptPubkey(64)`
+- `0x08` = synchronous plaintext; `0x09` = asynchronous **raw DEFLATE** (`deflateInit2(wbits=-15)` + `Z_SYNC_FLUSH`)
+- **The logs are not encrypted** (the 64-byte ECDH/TEA key field is all zeros)
+- Fully decoded **223/223 records → 62 MB plaintext**
+- Decoder: `~/ulanzi-re/tools/xlog_decode.py`
+- These 62 MB are the most valuable forensic material in this project
 
 ---
 
-## 附录：证据来源
+## Appendix: Evidence Sources
 
-- 静态：`~/ulanzi-re/raw/strings_short.txt`、`symbols.txt`、`kwdm.dylib` ObjC 元数据
-- 动态：`~/ulanzi-re/raw/cap2.log`（原始）、`cap3.log`（解码版）
-- 工具：`~/ulanzi-re/tools/vibekey_probe.py`（hidapi 直连）、`vibekey_decode.py`（可读化抓包）
-- 详细拆解：`~/ulanzi-re/findings/binary-surface.md`、`kwdm-protocol.md`
+- Static: `~/ulanzi-re/raw/strings_short.txt`, `symbols.txt`, `kwdm.dylib` ObjC metadata
+- Dynamic: `~/ulanzi-re/raw/cap2.log` (raw), `cap3.log` (decoded)
+- Tools: `~/ulanzi-re/tools/vibekey_probe.py` (direct hidapi), `vibekey_decode.py` (human-readable capture)
+- Detailed breakdown: `~/ulanzi-re/findings/binary-surface.md`, `kwdm-protocol.md`

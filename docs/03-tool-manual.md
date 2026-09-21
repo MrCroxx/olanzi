@@ -1,32 +1,32 @@
-# 03 · vibekey.py 工具手册
-> 🌐 [English](03-tool-manual.en.md)
+# 03 · vibekey.py Tool Manual
+> 🌐 [中文](03-tool-manual.zh.md)
 
-> 一个文件，零第三方依赖，直接和硬件对话。
-> 源码：[vibekey.py](../vibekey.py)
+> One file, zero third-party dependencies, talks to the hardware directly.
+> Source: [vibekey.py](../vibekey.py)
 
-> 📚 文档集：[README](../README.md) · [01 职责边界](01-ulanzi-studio-scope.md) · [02 协议](02-vibekey-protocol.md) · **03 工具手册** · [04 逆向方法论](04-methodology.md) · [05 验证记录](05-verification-log.md)
+> 📚 Docs set: [README](../README.md) · [01 Scope](01-ulanzi-studio-scope.md) · [02 Protocol](02-vibekey-protocol.md) · **03 Tool Manual** · [04 Methodology](04-methodology.md) · [05 Verification Log](05-verification-log.md)
 
 ---
 
-## 1. 安装
+## 1. Installation
 
-没有安装步骤。
+There is no installation step.
 
 ```bash
-cd <项目目录>
+cd <project directory>
 python3 vibekey.py --help
 ```
 
-依赖只有 **Python 3 标准库** + 系统自带的 **IOKit / CoreFoundation**（通过 `ctypes` 调用）。
-**不需要 `pip install`，不需要 Ulanzi Studio，不需要后台服务。**
+The only dependencies are the **Python 3 standard library** plus the system's built-in **IOKit / CoreFoundation** (called through `ctypes`).
+**No `pip install`, no Ulanzi Studio, no background service.**
 
-### 唯一的前置条件：输入监控权限
+### The only prerequisite: Input Monitoring permission
 
-macOS 从 10.15 起，读键盘类 HID 接口需要用户显式授权。
+Since macOS 10.15, reading a keyboard-class HID interface requires explicit user authorization.
 
-> **系统设置 → 隐私与安全性 → 输入监控 → 打开你用的终端 → 完全退出并重启该终端**
+> **System Settings → Privacy & Security → Input Monitoring → enable the terminal you use → fully quit and restart that terminal**
 
-**权限没开时会怎样？**
+**What happens when the permission is not granted?**
 
 ```
 13:33:54.756 ✗ 打不开 AU05  输入接口  无权限 (kIOReturnNotPermitted)
@@ -37,36 +37,36 @@ macOS 从 10.15 起，读键盘类 HID 接口需要用户显式授权。
     （程序会持续重试，权限开放后会自动接上）
 ```
 
-程序**不会静默失败** —— 这是刻意的设计（早期版本会默默跳过，导致"按了没反应"却查不出原因）。
-它会每 2 秒重试一次，**权限一开就自动接上，不用重启程序**。
+The program **does not fail silently** — this is deliberate (early versions skipped quietly, so "pressed but nothing happened" had no traceable cause).
+It retries every 2 seconds, and **hooks up automatically as soon as the permission is granted — no need to restart the program**.
 
 ---
 
-## 2. 四种使用模式
+## 2. Four Usage Modes
 
-### 2.1 监控模式（最常用）
+### 2.1 Monitor mode (most common)
 
 ```bash
 python3 vibekey.py --probe --poll 2
 ```
 
-| 参数 | 作用 |
+| Argument | Effect |
 |---|---|
-| `--probe` | 启动时先读一遍设备状态（固件/电量/降噪/SN…） |
-| `--poll 2` | 每 2 秒发一次保活查询，让设备保持唤醒 |
+| `--probe` | Reads the device status once at startup (firmware/battery/noise reduction/SN…) |
+| `--poll 2` | Sends a keepalive query every 2 seconds to keep the device awake |
 
-**为什么需要 `--poll`？** 设备是被动的 —— 不轮询就不说话，连心跳都没有。
-`--poll 2` 是最稳的间隔。
+**Why is `--poll` needed?** The device is passive — no polling, no talk: not even a heartbeat.
+`--poll 2` is the most reliable interval.
 
-### 2.2 配置模式
+### 2.2 Configuration mode
 
 ```bash
-python3 vibekey.py --keys                        # 列出六个控件的当前配置
-python3 vibekey.py --set-key 0=F13               # 键1 → F13
-python3 vibekey.py --set-key 0=enter --set-key 2=0x04    # 一次改多个
+python3 vibekey.py --keys                        # list the current configuration of the six controls
+python3 vibekey.py --set-key 0=F13               # key 1 → F13
+python3 vibekey.py --set-key 0=enter --set-key 2=0x04    # change several at once
 ```
 
-配置模式下**日志自动静音**，只输出结果表格：
+In configuration mode the **log is automatically muted**; only the result table is printed:
 
 ```
   设备端按键配置（index 0-5 = 六个控件）
@@ -81,7 +81,7 @@ python3 vibekey.py --set-key 0=enter --set-key 2=0x04    # 一次改多个
   5         旋钮 ← 左拧          按键           Backspace 0x2A
 ```
 
-`--set-key` 会**自动读原值 → 写新值 → 再读回确认**：
+`--set-key` **automatically reads the old value → writes the new value → reads back to confirm**:
 
 ```
   修改设备端按键配置
@@ -89,25 +89,25 @@ python3 vibekey.py --set-key 0=enter --set-key 2=0x04    # 一次改多个
   0  键 1 (上)        F13                    →  0x01 (无效码/未配置) 0x01   ✔ 已写入并确认
 ```
 
-**写入是持久的**（存在设备里），断电重连依然生效。
+**The write is persistent** (stored on the device); it survives power-off and reconnection.
 
-配置完若不加 `--poll`/`-t`，程序会立即退出。
+After configuring, if you do not add `--poll`/`-t`, the program exits immediately.
 
-### 2.3 诊断模式
+### 2.3 Diagnostic mode
 
 ```bash
-python3 vibekey.py --list           # 只列 HID 接口
-python3 vibekey.py --descriptor -t 2   # dump HID 报文描述符
-python3 vibekey.py --probe -t 3     # 只读一遍设备状态
+python3 vibekey.py --list           # list HID interfaces only
+python3 vibekey.py --descriptor -t 2   # dump the HID report descriptor
+python3 vibekey.py --probe -t 3     # read the device status once
 ```
 
-### 2.4 学习模式（看协议）
+### 2.4 Learn mode (inspect the protocol)
 
 ```bash
 python3 vibekey.py --learn --raw -t 30
 ```
 
-额外打印每一帧的**原始密文和明文**：
+Additionally prints the **raw ciphertext and plaintext** of every frame:
 
 ```
 13:44:21.333 厂商 ← 读 按键快捷功能  00 01 01 02 68
@@ -115,43 +115,43 @@ python3 vibekey.py --learn --raw -t 30
                PT 81 06 50 11 00 01 01 02 68 00 00 00 00 00 00 00 ...
 ```
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `CT` | CipherText，线上收到的原始密文（56 字节可解） |
-| `PT` | PlainText，TEA 解密后的明文帧 |
+| `CT` | CipherText, the raw ciphertext received on the wire (56 decryptable bytes) |
+| `PT` | PlainText, the plaintext frame after TEA decryption |
 
 ---
 
-## 3. 全部参数
+## 3. All Arguments
 
-| 参数 | 默认 | 说明 |
+| Argument | Default | Description |
 |---|---|---|
-| `--list` | | 只列出设备接口，然后退出 |
-| `--probe` | | 启动时主动查询设备状态（**只读**，安全） |
-| `--keys` | | 列出设备端按键配置 |
-| `--set-key IDX=VALUE` | | 改控件的 HID 键码，**可重复** |
-| `--descriptor` | | dump HID 报文描述符 |
-| `--learn` | | 学习模式：打印原始密文/明文 |
-| `--raw` | | 显示每一条心跳（默认每 10 条只显示 1 条） |
-| `--poll 秒` | `0` | 每隔 N 秒发保活查询，推荐 `2` |
-| `-t, --duration 秒` | `0` | 运行时长，`0` = 一直跑 |
-| `--log 文件` | `/tmp/vibekey-events.log` | 事件同时写入日志（追加） |
-| `--echo` | 关 | 保留终端回显。**默认关闭**，避免按键字符冲乱输出 |
-| `--no-color` | 关 | 关闭 ANSI 颜色 |
+| `--list` | | Lists device interfaces only, then exits |
+| `--probe` | | Actively queries device status at startup (**read-only**, safe) |
+| `--keys` | | Lists the on-device key configuration |
+| `--set-key IDX=VALUE` | | Changes a control's HID keycode; **repeatable** |
+| `--descriptor` | | Dumps the HID report descriptor |
+| `--learn` | | Learn mode: prints raw ciphertext/plaintext |
+| `--raw` | | Shows every heartbeat (by default only 1 in 10 is shown) |
+| `--poll SECONDS` | `0` | Sends a keepalive query every N seconds; `2` is recommended |
+| `-t, --duration SECONDS` | `0` | Run duration; `0` = run forever |
+| `--log FILE` | `/tmp/vibekey-events.log` | Also writes events to a log file (append) |
+| `--echo` | off | Keeps terminal echo. **Off by default**, so key characters do not scramble the output |
+| `--no-color` | off | Disables ANSI color |
 
-### 键码写法
+### Keycode formats
 
-`--set-key` 的 VALUE 支持三种：
+The VALUE of `--set-key` accepts three forms:
 
-| 写法 | 例 |
+| Form | Example |
 |---|---|
-| 十六进制 | `0x68` |
-| 十进制 | `104` |
-| 名称 | `F13`、`enter`、`esc`、`backspace`、`lctrl`、`right`、`pageup`… |
+| Hexadecimal | `0x68` |
+| Decimal | `104` |
+| Name | `F13`, `enter`, `esc`, `backspace`, `lctrl`, `right`, `pageup`… |
 
-常用键码速查：
+Common keycode quick reference:
 
-| 键 | 码 | 键 | 码 |
+| Key | Code | Key | Code |
 |---|---|---|---|
 | `a`–`z` | `0x04`–`0x1D` | `F1`–`F12` | `0x3A`–`0x45` |
 | `1`–`9`,`0` | `0x1E`–`0x27` | `F13`–`F24` | `0x68`–`0x73` |
@@ -164,60 +164,60 @@ python3 vibekey.py --learn --raw -t 30
 | `RightArrow` | `0x4F` | `RightAlt` | `0xE6` |
 | `LeftArrow` | `0x50` | `RightGUI/⌘` | `0xE7` |
 
-> **建议**：优先用 `F13`–`F24` 这类 macOS 默认无功能的键，
-> 避免改完之后打字误触发。想让它干活，再用 Karabiner / skhd / Hammerspoon 绑定。
+> **Recommendation**: prefer keys such as `F13`–`F24`, which have no default function on macOS,
+> so that typing does not trigger them by accident after the change. To put them to work, bind them with Karabiner / skhd / Hammerspoon.
 
 ---
 
-## 4. 输出解读
+## 4. Reading the Output
 
-### 4.1 按键事件
+### 4.1 Key events
 
 ```
 13:29:21 按键   ⌨ 键 2 (中)        Enter                      400 ms
 13:29:26 旋钮   ⟳ 旋钮 → 右拧       RightArrow                   4 ms
 ```
 
-| 列 | 含义 |
+| Column | Meaning |
 |---|---|
-| 时间 | 精确到毫秒 |
-| 类别 | `按键` / `旋钮` |
-| 图标 | `⌨` 按键 · `⟳` 旋钮转动 |
-| 控件名 | 从 index 映射表查出来的 |
-| 原始码 | HID 名称 + `0x` 值 |
-| 时长 | 按住的毫秒数 |
+| Time | Accurate to the millisecond |
+| Category | key / knob |
+| Icon | `⌨` key · `⟳` knob rotation |
+| Control name | Looked up in the index mapping table |
+| Raw code | HID name + `0x` value |
+| Duration | Milliseconds held down |
 
-### ⭐ 时长能区分控件类型
+### ⭐ Duration distinguishes control types
 
-实测发现的规律：
+A pattern found by measurement:
 
-| 类型 | 按压时长 |
+| Type | Press duration |
 |---|---|
-| **旋钮转动**（瞬时脉冲） | **0 – 10 ms** |
-| **人手按键** | **80 – 2000 ms** |
+| **Knob rotation** (instantaneous pulse) | **0 – 10 ms** |
+| **Human key press** | **80 – 2000 ms** |
 
-程序用 **25 ms** 作为阈值自动分类，所以**不需要预先知道映射**就能分开这两类事件。
+The program uses **25 ms** as the threshold for automatic classification, so it separates these two event types **without knowing the mapping in advance**.
 
-### 4.2 厂商通道事件
+### 4.2 Vendor channel events
 
 ```
 13:44:21.333 厂商 ← 读 按键快捷功能  00 01 01 02 68     cmd=0x01 flags=4 len=63
 ```
 
-- `←` = 设备回复，`→` = 主机发出
-- `读` / `写` = access 字段
-- 后面是解码后的数据
-- `cmd` / `flags` / `len` 是原始帧信息
+- `←` = device reply, `→` = sent by the host
+- read / write = the access field
+- What follows is the decoded data
+- `cmd` / `flags` / `len` are raw frame information
 
-常见的心跳：
+A typical heartbeat:
 
 ```
 厂商 → 通知/心跳 ctr=2135102066141   cmd=0x0B flags=0 len=63
 ```
 
-### 4.3 会话统计
+### 4.3 Session statistics
 
-退出时（`Ctrl-C` 或 `-t` 到时间）打印：
+Printed on exit (`Ctrl-C`, or when `-t` expires):
 
 ```
   本次会话统计
@@ -230,36 +230,36 @@ python3 vibekey.py --learn --raw -t 30
 
 ---
 
-## 5. 日志
+## 5. Logging
 
-默认**始终**写日志到 `/tmp/vibekey-events.log`（追加模式，自动剥掉 ANSI 颜色码）。
+By default the program **always** writes a log to `/tmp/vibekey-events.log` (append mode, with ANSI color codes stripped automatically).
 
-**为什么需要它？** 按键会真的注入终端，把屏幕冲乱 —— 日志文件永远是干净的。
+**Why is it needed?** Keystrokes really are injected into the terminal and scramble the screen — the log file always stays clean.
 
 ```bash
 python3 vibekey.py --poll 2 --log ~/vibekey.log
 ```
 
-> 程序启动时会往日志里写一行 `===== 2026-09-21T13:44:21 =====` 作为分隔。
+> At startup the program writes a line `===== 2026-09-21T13:44:21 =====` into the log as a separator.
 
 ---
 
-## 6. 故障排查
+## 6. Troubleshooting
 
-| 现象 | 原因 | 解决 |
+| Symptom | Cause | Solution |
 |---|---|---|
-| `✗ 打不开 … 无权限 (kIOReturnNotPermitted)` | 缺输入监控权限 | 系统设置 → 隐私与安全性 → 输入监控 → 打开终端 → **重启终端** |
-| `✗ 打不开 … 被独占 (kIOReturnExclusiveAccess)` | 别的进程独占了 | `pkill -f UlanziDeck`，然后重跑 |
-| `没有找到 Vibe Key` | dongle 没插好 | 拔插 dongle，或 `python3 vibekey.py --list` 确认 |
-| 按了键没反应 | 输入接口没打开 | 看启动输出有没有 `● 已连接 … 输入接口` |
-| 屏幕被按键字符冲乱 | 终端回显 | 默认已关闭；如果你用 `--echo` 就会出现 |
-| 键 1 按了没反应 | **它是无效码 `0x01`** | 用 `--set-key 0=F13` 改成有用的键 |
-| 改了键没生效 | 读回确认失败 | 重跑 `--keys` 看配置表；必要时 `--set-key` 再写一次 |
-| `--keys` 六个控件全是 `(无回复)` | **Vibe Key 本体没开机**（dongle 是好的） | 按一下设备电源键唤醒它；原理见 [02 §4](02-vibekey-protocol.md) |
+| ✗ cannot open … no permission (`kIOReturnNotPermitted`) | Missing Input Monitoring permission | System Settings → Privacy & Security → Input Monitoring → enable the terminal → **restart the terminal** |
+| ✗ cannot open … held exclusively (`kIOReturnExclusiveAccess`) | Another process holds it exclusively | `pkill -f UlanziDeck`, then run it again |
+| Vibe Key not found | The dongle is not seated properly | Reseat the dongle, or check with `python3 vibekey.py --list` |
+| Pressing a key does nothing | The input interface is not open | Check whether the startup output has the ● connected … input interface line |
+| The screen is scrambled by key characters | Terminal echo | Off by default; it appears only if you use `--echo` |
+| Key 1 does nothing when pressed | **It is the invalid code `0x01`** | Use `--set-key 0=F13` to change it to a useful key |
+| A key change did not take effect | The read-back confirmation failed | Re-run `--keys` to inspect the configuration table; if necessary, write it again with `--set-key` |
+| `--keys` shows `(无回复)` for all six controls | **The Vibe Key itself is powered off** (the dongle is fine) | Press the device's power button to wake it; see [02 §4](02-vibekey-protocol.md) for why |
 
-### 应急恢复
+### Emergency recovery
 
-如果键被改乱了，回到出厂值：
+If the keys get scrambled, restore the factory values:
 
 ```bash
 python3 vibekey.py \
@@ -273,72 +273,72 @@ python3 vibekey.py \
 
 ---
 
-## 7. 实现要点（踩过的坑）
+## 7. Implementation Notes (Pitfalls)
 
-这部分是给想改源码的人看的。
+This section is for anyone who wants to modify the source.
 
-### 7.1 不能用 `IOHIDManagerOpen`
+### 7.1 Do not use `IOHIDManagerOpen`
 
-`IOHIDManagerOpen(mgr, 0)` 会**一次性打开所有匹配设备**，只要其中任何一个失败
-（被独占 `0xE00002C5`、或无权限 `0xE00002E2`），**整个调用就失败**。
+`IOHIDManagerOpen(mgr, 0)` **opens every matching device at once**; if any single one fails
+(exclusive access `0xE00002C5`, or no permission `0xE00002E2`), **the whole call fails**.
 
-✅ 正确做法：`IOServiceGetMatchingServices` 枚举 → 对每个 `IOService` 单独
-`IOHIDDeviceCreate` + `IOHIDDeviceOpen`。
+✅ Correct approach: enumerate with `IOServiceGetMatchingServices` → then, for each `IOService`, individually
+`IOHIDDeviceCreate` + `IOHIDDeviceOpen`.
 
 ```python
 matching = iok.IOServiceMatching(b"IOHIDDevice")
 cf.CFDictionarySetValue(matching, cfstr("VendorID"), cfnum(VIBE_VID))
 cf.CFDictionarySetValue(matching, cfstr("ProductID"), cfnum(VIBE_PID))
 iok.IOServiceGetMatchingServices(kIOMainPortDefault, matching, ctypes.byref(it))
-# 逐个 IOHIDDeviceCreate / IOHIDDeviceOpen
+# IOHIDDeviceCreate / IOHIDDeviceOpen one by one
 ```
 
-### 7.2 63 字节 vs 64 字节
+### 7.2 63 bytes vs 64 bytes
 
-帧结构体是 **64 字节**，TEA 也是按 **8 个完整分组**加密的。
-但 HID 报文总长只有 64 字节，其中 **1 字节是 report ID**。
+The frame struct is **64 bytes**, and TEA encrypts **8 full blocks**.
+But the total HID report length is only 64 bytes, **1 byte of which is the report ID**.
 
-| 方向 | 做法 |
+| Direction | Approach |
 |---|---|
-| **解密** | 只解 **7 个分组（56 字节）**；末尾 7 字节是不可解的填充，当 0 处理 |
-| **加密** | 加密完整 64 字节，**只发前 63 字节** |
+| **Decryption** | Decrypt only **7 blocks (56 bytes)**; the last 7 bytes are undecryptable padding and are treated as 0 |
+| **Encryption** | Encrypt the full 64 bytes and **send only the first 63 bytes** |
 
 ```python
-ct = tea_encrypt(pt)              # 64 字节
-wire = bytes([0x55]) + ct[:63]    # 64 字节（含 report ID）
+ct = tea_encrypt(pt)              # 64 bytes
+wire = bytes([0x55]) + ct[:63]    # 64 bytes (including the report ID)
 ```
 
-### 7.3 设备是被动的
+### 7.3 The device is passive
 
-不主动轮询，设备**一条报文都不发**（连心跳都没有）。所以 `--poll` 是保持唤醒的关键。
+Without active polling the device **sends not a single report** (not even a heartbeat). So `--poll` is the key to keeping it awake.
 
-### 7.4 并发打开是安全的
+### 7.4 Concurrent opens are safe
 
-所有打开都用 `kIOHIDOptionsTypeNone`（非独占），
-**多个实例可以同时打开同一个设备**，不会互相打架，也不会独占。
+All opens use `kIOHIDOptionsTypeNone` (non-exclusive), so
+**multiple instances can open the same device at the same time** without fighting each other or taking it exclusively.
 
-已验证：同时跑两个 `vibekey.py` 实例都成功。
+Verified: running two `vibekey.py` instances at the same time both succeed.
 
-### 7.5 保活查询的回复要过滤掉
+### 7.5 Keepalive query replies must be filtered out
 
-`--poll` 会周期性发 `01 0B 89 01`（读 Hooks 模式），设备每次都回。
-如果不加过滤，输出会被淹没。程序识别 `pt[2] == 0x89 and (pt[3] & 0x0F) == 0x01`
-的回复并归入"（保活往返）"统计。
+`--poll` periodically sends `01 0B 89 01` (read Hooks mode), and the device replies every time.
+Without filtering, the output would be drowned. The program recognizes replies with `pt[2] == 0x89 and (pt[3] & 0x0F) == 0x01`
+and counts them under the keepalive round-trip row in the statistics.
 
-（`--learn` 或 `--raw` 时会显示。）
+(They are shown when using `--learn` or `--raw`.)
 
 ---
 
-## 8. 想扩展？
+## 8. Want to Extend It?
 
-`vibekey.py` 是一个单文件脚本，可以直接 import：
+`vibekey.py` is a single-file script and can be imported directly:
 
 ```python
 import vibekey as V
 
 class MyMon(V.Monitor):
     def _keyboard(self, p):
-        ...   # 重写按键处理
+        ...   # override key handling
 
 mon = MyMon()
 handles, pending = V.build_manager(mon)
@@ -347,31 +347,31 @@ while True:
     V.cf.CFRunLoopRunInMode(V.kCFRunLoopDefaultMode, 0.1, False)
 ```
 
-有用的导出：
+Useful exports:
 
-| 名字 | 作用 |
+| Name | Purpose |
 |---|---|
-| `tea_encrypt` / `tea_decrypt` | TEA 编解码（自动按 8 字节分组） |
-| `send_frame(handles, pt)` | 发一条明文帧（自动加密 + 截断） |
-| `build_manager(mon)` | 枚举并打开所有接口 → `(handles, pending)` |
-| `retry_pending(...)` | 重试打不开的接口 |
-| `close_all(handles)` | 关闭所有接口 |
-| `Monitor` | 报文解码 + 显示（可继承） |
-| `OP_TABLE` | 85 条命令的 `(grp, op) → 名称` 表 |
-| `VIBE_CONTROLS` | 键码 → 控件名映射 |
-| `read_key_config` / `write_key_config` | 读写设备按键表 |
-| `parse_keycode` / `keyname` | 键码 ↔ 名字 |
+| `tea_encrypt` / `tea_decrypt` | TEA encode/decode (blocking into 8 bytes automatically) |
+| `send_frame(handles, pt)` | Sends one plaintext frame (automatic encryption + truncation) |
+| `build_manager(mon)` | Enumerates and opens all interfaces → `(handles, pending)` |
+| `retry_pending(...)` | Retries interfaces that could not be opened |
+| `close_all(handles)` | Closes all interfaces |
+| `Monitor` | Report decoding + display (subclassable) |
+| `OP_TABLE` | Table of 85 commands, `(grp, op) → name` |
+| `VIBE_CONTROLS` | Keycode → control name mapping |
+| `read_key_config` / `write_key_config` | Read/write the on-device key table |
+| `parse_keycode` / `keyname` | Keycode ↔ name |
 
 ---
 
-## 9. 安全提示
+## 9. Safety Notes
 
-| 操作 | 风险 |
+| Operation | Risk |
 |---|---|
-| `--probe`、`--keys`、`--list`、`--descriptor` | **只读，安全** |
-| `--poll` | 只发读命令，安全 |
-| `--set-key` | **写设备配置**。改动持久化，但可随时改回；见 §6 应急恢复 |
-| 电源键长按 | **可能直接关机**，程序不涉及 |
+| `--probe`, `--keys`, `--list`, `--descriptor` | **Read-only, safe** |
+| `--poll` | Sends only read commands, safe |
+| `--set-key` | **Writes device configuration**. Changes are persistent but can be reverted at any time; see §6 Emergency recovery |
+| Long-press of the power key | **May power the device off directly**; not touched by this program |
 
-> 未知的 `access=0x04`（写）命令**不要乱发** —— 命令表里有几十条写命令
-> （亮度、麦克风、指示灯、OTA…），在没弄清参数格式前发出去可能让设备进入异常状态。
+> Do not blindly send unknown `access=0x04` (write) commands — the command table contains dozens of write commands
+> (brightness, microphone, indicator light, OTA…); sending them before the parameter formats are understood may put the device into an abnormal state.

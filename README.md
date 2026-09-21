@@ -1,42 +1,42 @@
-# olanzi · Ulanzi Vibe Key 逆向与开源客户端
+# olanzi · Ulanzi Vibe Key reverse engineering & open-source client
 
-> 🌐 [English](README.en.md)
+> 🌐 [中文](README.zh.md)
 
-> 把 Ulanzi Vibe Key（AU05）从 Ulanzi Studio 里解放出来。
-> **纯 Python 标准库 + 系统 IOKit，不依赖 Studio、不依赖任何第三方包。**
-
----
-
-## 一句话
-
-Ulanzi Vibe Key 是一个 USB 复合 HID 设备。Ulanzi Studio 把它包了一层私有协议，
-让它看起来"必须装 Studio 才能用"。我们把那层协议拆掉了：
-
-```
-✅ 读按键      标准 HID 键盘报文，零成本
-✅ 改按键      私有通道 01 06 50 04，设备端持久化，已实测生效
-✅ 读设备状态   固件 / 电量 / 降噪 / 指示灯 / SN / UUID
-✅ 解密私有协议  TEA-ECB，密钥与算法全部解出，85 条命令表
-```
+> Free the Ulanzi Vibe Key (AU05) from Ulanzi Studio.
+> **Pure Python standard library + system IOKit — no Studio, no third-party packages.**
 
 ---
 
-## 快速上手
+## In a sentence
+
+The Ulanzi Vibe Key is a USB composite HID device. Ulanzi Studio wrapped a private
+protocol around it, so it looked like "you must install Studio to use it". We tore that layer off:
+
+```
+✅ Read keys      standard HID keyboard reports, zero cost
+✅ Remap keys     vendor channel 01 06 50 04, persisted on-device, measured working
+✅ Read device state   firmware / battery / noise reduction / indicator light / SN / UUID
+✅ Decrypt the private protocol   TEA-ECB, key and algorithm fully recovered, 85-command table
+```
+
+---
+
+## Quick start
 
 ```bash
 cd olanzi
 
-# 1. 实时监控按键（Ctrl-C 退出）
+# 1. Live key monitor (Ctrl-C to exit)
 python3 vibekey.py --probe --poll 2
 
-# 2. 看设备里存的按键配置
+# 2. Show the key configuration stored on the device
 python3 vibekey.py --keys
 
-# 3. 改键（把最上面那个键改成 F13）
+# 3. Remap a key (turn the topmost key into F13)
 python3 vibekey.py --set-key 0=F13
 ```
 
-输出长这样：
+The output looks like this:
 
 ```
 13:29:21 按键   ⌨ 键 2 (中)        Enter                      400 ms
@@ -44,167 +44,167 @@ python3 vibekey.py --set-key 0=F13
 13:29:34 按键   ⌨ 旋钮 按下        PrintScreen               1220 ms
 ```
 
-> ⚠️ **按键会真的注入你的焦点窗口**（键 2 打 `Enter`、键 3 打 `Esc`、旋钮打方向键/退格）。
-> 程序默认关闭终端回显，让输出保持干净；加 `--echo` 可以恢复看到按键字符。
+> ⚠️ **Keys really are injected into your focused window** (key 2 types `Enter`, key 3 types `Esc`, the knob types arrow keys / Backspace).
+> The program disables terminal echo by default to keep the output clean; add `--echo` to see the typed characters again.
 
-### 前置条件：输入监控权限
+### Prerequisite: Input Monitoring permission
 
-macOS 需要 **输入监控** 权限才能读键盘接口。
+macOS needs the **Input Monitoring** permission to read the keyboard interface.
 
-> 系统设置 → 隐私与安全性 → **输入监控** → 打开你用的终端（iTerm2 / Terminal）→ **重启终端**
+> System Settings → Privacy & Security → **Input Monitoring** → enable the terminal you use (iTerm2 / Terminal) → **restart the terminal**
 
-没权限时程序会红字报警并自动重试，一开权限就自动接上，不用重启程序。
+Without the permission the program prints a red warning and retries automatically; once you grant it, it reconnects on its own — no need to restart the program.
 
 ---
 
-## 这台设备有什么
+## What's on this device
 
-| 项 | 值 |
+| Item | Value |
 |---|---|
-| 型号 | **AU05**（Vibe Key） |
-| USB | VID `0xFFF1` / PID `0x00DD`，复合设备，序列号 `202606031150` |
-| 固件 | 4.4.2（dongle 与设备同版本） |
-| 控件 | **3 个键（上下排列）+ 1 个旋钮 + 1 个电源键** |
-| 接口 2 | 标准 HID：Consumer `0x01` / Mouse `0x02` / **Keyboard `0x03`** |
-| 接口 3 | 厂商私有：Usage Page `0xFFFC`，Report ID `0x55`，TEA 加密 |
+| Model | **AU05** (Vibe Key) |
+| USB | VID `0xFFF1` / PID `0x00DD`, composite device, serial number `202606031150` |
+| Firmware | 4.4.2 (dongle and device share the same version) |
+| Controls | **3 keys (stacked vertically) + 1 knob + 1 power key** |
+| Interface 2 | Standard HID: Consumer `0x01` / Mouse `0x02` / **Keyboard `0x03`** |
+| Interface 3 | Vendor-private: Usage Page `0xFFFC`, Report ID `0x55`, TEA encryption |
 
-**出厂按键映射**（实测确认）：
+**Factory key mapping** (measured and confirmed):
 
-| 控件 | HID 键码 | 含义 |
+| Control | HID keycode | Meaning |
 |---|---|---|
-| 键 1（上） | `0x01` | ErrorRollOver —— **无效码，系统直接忽略** |
-| 键 2（中） | `0x28` | Enter |
-| 键 3（下） | `0x29` | Esc |
-| 旋钮 → 右拧 | `0x4F` | RightArrow |
-| 旋钮 ← 左拧 | `0x2A` | Backspace |
-| 旋钮 按下 | `0x46` | PrintScreen |
-| 电源键 | — | **不发报文**，由设备硬件处理 |
+| Key 1 (top) | `0x01` | ErrorRollOver — **invalid code, the system ignores it outright** |
+| Key 2 (middle) | `0x28` | Enter |
+| Key 3 (bottom) | `0x29` | Esc |
+| Knob twist → right | `0x4F` | RightArrow |
+| Knob twist ← left | `0x2A` | Backspace |
+| Knob press | `0x46` | PrintScreen |
+| Power key | — | **sends no reports**, handled by device hardware |
 
-> **键 1 是"残废"的** —— 它发的是无效码，脱离 Studio 等于没有。
-> 这不是 bug，是设计：键 1 就是 AI 对话键，被绑死在自家软件上。
-> **现在你可以改它**，见下文。
+> **Key 1 is "crippled"** — it sends an invalid code, so without Studio it does nothing.
+> That is not a bug, it is by design: key 1 is the AI chat key, tied to the vendor's own software.
+> **Now you can remap it** — see below.
 
 ---
 
-## 能力边界
+## Capability boundary
 
-| 归设备/系统管 | 归 Ulanzi Studio 管 |
+| Handled by the device / OS | Handled by Ulanzi Studio |
 |---|---|
-| ✅ 按键输入（标准 HID，直接注入 OS） | ⬜ 指示灯效果（AI 状态 → 灯效） |
-| ✅ 按键表（我们现在能读写） | ⬜ 固件 OTA |
-| ✅ 多媒体键 / 鼠标 | ⬜ 插件生态、云市场 |
-| | ⬜ profile 管理、多设备编排 |
+| ✅ Key input (standard HID, injected straight into the OS) | ⬜ Indicator light effects (AI state → lighting effect) |
+| ✅ Key table (we can now read and write it) | ⬜ Firmware OTA |
+| ✅ Multimedia keys / mouse | ⬜ Plugin ecosystem, cloud marketplace |
+| | ⬜ profile management, multi-device orchestration |
 
-第一期完整分析见 [docs/01-ulanzi-studio-scope.md](docs/01-ulanzi-studio-scope.md)。
+The complete phase-1 analysis is in [docs/01-ulanzi-studio-scope.md](docs/01-ulanzi-studio-scope.md).
 
 ---
 
-## 文档导航
+## Documentation
 
-| 文档 | 内容 |
+| Document | Contents |
 |---|---|
-| **[01 · Studio 职责边界](docs/01-ulanzi-studio-scope.md)** | Ulanzi Studio 到底做了什么、哪些不归它管（第一期） |
-| **[02 · Vibe Key 协议](docs/02-vibekey-protocol.md)** | TEA 密钥、帧格式、85 条命令表、控件映射、**可编程按键表** |
-| **[03 · 工具手册](docs/03-tool-manual.md)** | `vibekey.py` 全部参数、输出解读、故障排查 |
-| **[04 · 逆向方法论](docs/04-methodology.md)** | 怎么逆出来的：可复现的步骤、关键突破点、踩过的坑 |
-| **[05 · 验证记录](docs/05-verification-log.md)** | 所有实测数据留档（含失败尝试） |
+| **[01 · Studio Scope](docs/01-ulanzi-studio-scope.md)** | What Ulanzi Studio actually does, and what is not its job (phase 1) |
+| **[02 · Vibe Key Protocol](docs/02-vibekey-protocol.md)** | TEA key, frame format, 85-command table, control mapping, **programmable key table** |
+| **[03 · Tool Manual](docs/03-tool-manual.md)** | Every `vibekey.py` option, output interpretation, troubleshooting |
+| **[04 · Methodology](docs/04-methodology.md)** | How we reversed it: reproducible steps, key breakthroughs, pitfalls |
+| **[05 · Verification Log](docs/05-verification-log.md)** | All measured data on record (including failed attempts) |
 
-> 每份文档都有**中英两个版本**，后缀 `.en.md` 为英文版；两版结构严格对应，改一边必须同步另一边。
+> English is the default: documentation files carry no language suffix. Chinese is an opt-in alternative suffixed with `.zh.md`. Both versions are kept in strict structural sync — editing one requires updating the other.
 
 ---
 
-## 数据流
+## Data flow
 
 ```
                     ┌──────────────────────────────────┐
    ┌──────────┐     │         Vibe Key (AU05)          │
-   │  3 个键   │────▶│  固件查"按键表"决定发什么键码        │
-   │  1 个旋钮 │     │                                  │
+   │  3 keys   │────▶│  firmware reads key table → keycode  │
+   │  1 knob   │     │                                  │
    └──────────┘     └────────────┬─────────────────────┘
                                  │
               ┌──────────────────┴──────────────────┐
               ▼                                     ▼
    ┌─────────────────────┐              ┌──────────────────────┐
-   │ 接口 2 · 标准 HID    │              │ 接口 3 · 厂商私有      │
+   │ Interface 2 · std HID│              │ Interface 3 · vendor   │
    │ Report ID 0x03      │              │ Report ID 0x55       │
-   │ 明文键盘报文         │              │ TEA 加密             │
+   │ plaintext kbd report │              │ TEA encrypted        │
    └──────────┬──────────┘              └──────────┬───────────┘
               │                                     │
               ▼                                     ▼
-    直接注入 macOS                        ┌─────────────────┐
-    任何程序都能读                         │  配置读写        │
-    （我们的工具走这条路）                   │  设备信息查询     │
-              │                          │  指示灯控制       │
-              │                          │  固件升级         │
+    directly injected into macOS          ┌─────────────────┐
+    any program can read it                │ config read/write│
+    (our tool takes this path)               │ device info query │
+              │                          │  indicator light  │
+              │                          │  firmware update  │
               │                          └─────────────────┘
               │                                     │
               └──────────────┬──────────────────────┘
                              ▼
                     ┌─────────────────┐
                     │  vibekey.py     │
-                    │  （本项目）       │
+                    │  (this project)   │
                     └─────────────────┘
-                    ↑ 完全绕开 Ulanzi Studio
+                    ↑ completely bypasses Ulanzi Studio
 ```
 
-> **注意**：Studio 退出后，厂商通道上**只有心跳**，没有任何 `deviceKeyEvent`。
-> 按键在标准 HID 上照常工作 —— 所以读按键根本不用碰私有协议。
+> **Note**: once Studio exits, the vendor channel carries **only heartbeats**, no `deviceKeyEvent` at all.
+> Keys keep working over standard HID — which is why reading keys never has to touch the private protocol.
 
 ---
 
-## 项目结构
+## Project structure
 
 ```
 olanzi/
-├── AGENTS.md                    ← 项目 Memory（约定 / 技术不变量 / 安全规则）
-├── README.md / README.en.md     ← 你在这里（中 / 英）
-├── vibekey.py                   ← 终端工具（零依赖，1060 行）
+├── AGENTS.md                    ← project memory (conventions / invariants / safety)
+├── README.md / README.zh.md     ← you are here (en / zh)
+├── vibekey.py                   ← terminal tool (zero dependencies, 1060 lines)
 ├── tools/
-│   └── check_docs.py            ← 文档双语一致性校验
+│   └── check_docs.py            ← bilingual documentation consistency check
 └── docs/
-    ├── 01-ulanzi-studio-scope.md   (+ .en.md)
-    ├── 02-vibekey-protocol.md      (+ .en.md)
-    ├── 03-tool-manual.md           (+ .en.md)
-    ├── 04-methodology.md           (+ .en.md)
-    ├── 05-verification-log.md      (+ .en.md)
+    ├── 01-ulanzi-studio-scope.md   (+ .zh.md)
+    ├── 02-vibekey-protocol.md      (+ .zh.md)
+    ├── 03-tool-manual.md           (+ .zh.md)
+    ├── 04-methodology.md           (+ .zh.md)
+    ├── 05-verification-log.md      (+ .zh.md)
     └── evidence/
         └── 2026-09-21-key-reprogram.log
 ```
 
-逆向过程的原始数据（反汇编、符号表、62 MB 解码日志等）在 `~/ulanzi-re/`，
-属于**中间产物**，不在本仓库内。
+The raw data from the reverse-engineering process (disassembly, symbol table, 62 MB decode log, etc.) lives in `~/ulanzi-re/`
+and counts as an **intermediate artifact** — it is not in this repository.
 
 ---
 
-## 环境
+## Environment
 
-| 项 | 版本 |
+| Item | Version |
 |---|---|
-| 系统 | macOS（Apple Silicon） |
-| Python | 3.x（仅标准库） |
-| 被测固件 | Ulanzi Studio **3.3.9** / Vibe Key 固件 **4.4.2** |
-| 验证日期 | 2026-09-21 |
+| OS | macOS (Apple Silicon) |
+| Python | 3.x (standard library only) |
+| Firmware under test | Ulanzi Studio **3.3.9** / Vibe Key firmware **4.4.2** |
+| Verification date | 2026-09-21 |
 
-> 协议可能随固件更新而变化。升级后若行为异常，先跑 `python3 vibekey.py --keys` 看配置表是否还在。
-
----
-
-## 路线图
-
-- [x] **第一期** —— 划清 Studio 的职责边界
-- [x] **第二期** —— 解出私有协议（TEA + 85 条命令 + 控件映射）
-- [x] **第三期** —— 读按键的终端工具（脱离 Studio 可用）
-- [x] **第四期** —— 读写设备的可编程按键表（**改键**）
-- [ ] **第五期** —— 驱动指示灯（AI 状态灯效）
-- [ ] **第六期** —— 替代客户端本体（按键 → 脚本 / Ollama / 窗口切换）
-- [ ] 待验证 —— 组合键（`num > 1`）、`类型=0x03`（系统/多媒体）
+> The protocol may change with firmware updates. If behaviour looks wrong after an upgrade, first run `python3 vibekey.py --keys` to see whether the configuration table is still there.
 
 ---
 
-## 说明
+## Roadmap
 
-本项目为**互操作性研究**：目的是让用户在自己买的硬件上运行自己写的软件。
-所有结论均来自对**本机已购设备**的观察与静态分析，未破解任何版权保护措施，
-未绕过任何鉴权，未分发厂商代码或固件。
+- [x] **Phase 1** — Draw the boundary of Studio's scope
+- [x] **Phase 2** — Decrypt the private protocol (TEA + 85 commands + control mapping)
+- [x] **Phase 3** — Terminal tool for reading keys (works without Studio)
+- [x] **Phase 4** — Read and write the device's programmable key table (**remapping**)
+- [ ] **Phase 5** — Drive the indicator light (AI state lighting effects)
+- [ ] **Phase 6** — The replacement client itself (key → script / Ollama / window switching)
+- [ ] To be verified — key combinations (`num > 1`), `type=0x03` (system / multimedia)
 
-`vibekey.py` 只依赖系统自带的 IOKit，**不读取、不修改 Ulanzi Studio 的任何文件**。
+---
+
+## Notes
+
+This project is **interoperability research**: the goal is to let users run software they wrote themselves on hardware they bought themselves.
+All conclusions come from observation and static analysis of **a locally purchased device**; no copy protection was cracked,
+no authentication was bypassed, and no vendor code or firmware is distributed.
+
+`vibekey.py` depends only on the system's built-in IOKit and **does not read or modify any file of Ulanzi Studio**.

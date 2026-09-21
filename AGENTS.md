@@ -21,31 +21,36 @@
 
 ### 命名规范
 
-| 中文版 | 英文版 |
+⭐ **英文是默认入口，文件名不带语言后缀。** 中文版加 `.zh.md`。
+
+| 英文版（默认，无后缀） | 中文版 |
 |---|---|
-| `README.md` | `README.en.md` |
-| `docs/01-ulanzi-studio-scope.md` | `docs/01-ulanzi-studio-scope.en.md` |
-| `docs/NN-<ascii-slug>.md` | `docs/NN-<ascii-slug>.en.md` |
+| `README.md` | `README.zh.md` |
+| `docs/01-ulanzi-studio-scope.md` | `docs/01-ulanzi-studio-scope.zh.md` |
+| `docs/NN-<ascii-slug>.md` | `docs/NN-<ascii-slug>.zh.md` |
 
 - 文件名**一律用 ASCII slug**（不要用中文文件名）
 - 编号 `NN` 中英一致，便于对照
-- 英文版是**同级目录下的 `.en.md` 兄弟文件**，不另建子目录
+- 两版是**同级目录下的兄弟文件**，不另建子目录
+- ⚠️ **不要再新增 `.en.md`** —— 无后缀的那份就是英文版。仓库公开，
+  默认入口必须是英文，中文是可选语言
 
 ### 硬性规则
 
-1. **新增文档必须同时产出中英两份。** 只写一份视为未完成。
+1. **新增文档必须同时产出中英两份。** 只写一份视为未完成。英文用无后缀文件名。
 2. **修改任一语言版本后，必须同步另一版本。** 不允许长期漂移。
 3. **两版的 Markdown 结构必须一一对应**：标题层级、表格列数、代码块、列表层级全部一致。
 4. **每份文档头部都要有文档集导航**，中文版链中文、英文版链英文。
-5. **中英互链**：中文版头部放 `[English](....en.md)`，英文版头部放 `[中文](....md)`。
+5. **中英互链**：英文版头部放 `[中文](....zh.md)`，中文版头部放 `[English](....md)`（指向无后缀的英文版）。
 6. **改完必须跑校验**：
 
    ```bash
    python3 tools/check_docs.py
    ```
 
-   它检查 6 项：英文版是否存在、两版结构是否一一对应（标题层级 / 代码块数 / 表格形状）、
-   **十六进制数值是否一一保真**、互链是否正常、`docs/` 下每份文档是否有 `📚` 导航行、
+   它检查 7 项：中文版是否存在（含孤立的 `.zh.md` 反向检查）、两版结构是否一一对应
+   （标题层级 / 代码块数 / 表格形状）、**十六进制数值是否一一保真**、互链是否正常、
+   `docs/` 下每份文档是否有 `📚` 导航行、
    **英文版散文是否残留中文**（围栏代码块与行内代码中的中文是合法引用，豁免）、
    相对链接是否全部可解析。**不通过就是没做完。**
 
@@ -124,14 +129,14 @@ The symptom `✗ 打不开 … 无权限` means the input-monitoring permission 
 
 ### 文档集
 
-| # | 中文 | English | 内容 |
+| # | English（默认） | 中文 | 内容 |
 |---|---|---|---|
-| — | `README.md` | `README.en.md` | 项目总览、快速上手 |
-| 01 | `docs/01-ulanzi-studio-scope.md` | `.en.md` | Studio 职责边界 |
-| 02 | `docs/02-vibekey-protocol.md` | `.en.md` | 协议：TEA / 帧格式 / 命令表 / 按键表 |
-| 03 | `docs/03-tool-manual.md` | `.en.md` | `vibekey.py` 工具手册 |
-| 04 | `docs/04-methodology.md` | `.en.md` | 逆向方法论 |
-| 05 | `docs/05-verification-log.md` | `.en.md` | 验证记录 |
+| — | `README.md` | `README.zh.md` | 项目总览、快速上手 |
+| 01 | `docs/01-ulanzi-studio-scope.md` | `.zh.md` | Studio 职责边界 |
+| 02 | `docs/02-vibekey-protocol.md` | `.zh.md` | 协议：TEA / 帧格式 / 命令表 / 按键表 |
+| 03 | `docs/03-tool-manual.md` | `.zh.md` | `vibekey.py` 工具手册 |
+| 04 | `docs/04-methodology.md` | `.zh.md` | 逆向方法论 |
+| 05 | `docs/05-verification-log.md` | `.zh.md` | 验证记录 |
 
 ---
 
@@ -139,17 +144,17 @@ The symptom `✗ 打不开 … 无权限` means the input-monitoring permission 
 
 ```
 olanzi/
-├── AGENTS.md                      ← 本文件（项目记忆）
-├── README.md / README.en.md       ← 入口
+├── AGENTS.md                      ← 本文件（项目记忆，不翻译）
+├── README.md / README.zh.md       ← 入口（英 / 中）
 ├── vibekey.py                     ← 工具本体（单文件，零第三方依赖）
 ├── tools/
 │   └── check_docs.py              ← 文档双语一致性校验
 └── docs/
-    ├── 01-ulanzi-studio-scope.md  (+ .en.md)
-    ├── 02-vibekey-protocol.md     (+ .en.md)
-    ├── 03-tool-manual.md          (+ .en.md)
-    ├── 04-methodology.md          (+ .en.md)
-    ├── 05-verification-log.md     (+ .en.md)
+    ├── 01-ulanzi-studio-scope.md  (+ .zh.md)
+    ├── 02-vibekey-protocol.md     (+ .zh.md)
+    ├── 03-tool-manual.md          (+ .zh.md)
+    ├── 04-methodology.md          (+ .zh.md)
+    ├── 05-verification-log.md     (+ .zh.md)
     └── evidence/                  ← 原始证据留档（不翻译）
 ```
 
@@ -160,7 +165,7 @@ olanzi/
 
 ## 4. 关键技术不变量
 
-> 新会话不需要重新推导这些，直接用。完整细节见 `docs/02-vibekey-protocol.md`。
+> 新会话不需要重新推导这些，直接用。完整细节见 `docs/02-vibekey-protocol.zh.md`。
 
 ### 设备
 
@@ -263,7 +268,7 @@ python3 vibekey.py --set-key 0=0x01 --set-key 1=0x28 --set-key 2=0x29 \
 **永远不要把自己的推断写成结论。**
 （第一期把 `route: "device-direct"` 当结论写下来，后来发现是死代码，教训。）
 
-**失败尝试也要留档**，见 `docs/05-verification-log.md` —— 这比成功经验更省时间。
+**失败尝试也要留档**，见 `docs/05-verification-log.zh.md` —— 这比成功经验更省时间。
 
 ---
 
@@ -282,12 +287,16 @@ python3 vibekey.py --set-key 0=0x01 --set-key 1=0x28 --set-key 2=0x29 \
 
 - **Conversation and code comments are in Chinese; commit messages are in English**
   (the repository is public, so its history should be readable to English-speaking contributors).
+- **English is the repository's default language**: entry-point filenames carry no language
+  suffix. Chinese is an opt-in alternative suffixed with `.zh.md`.
 - **All documentation under `README` and `docs/` MUST exist in both Chinese and English.**
-  - Chinese: `README.md`, `docs/NN-<ascii-slug>.md`
-  - English: `README.en.md`, `docs/NN-<ascii-slug>.en.md`
+  - English (default): `README.md`, `docs/NN-<ascii-slug>.md`
+  - Chinese: `README.zh.md`, `docs/NN-<ascii-slug>.zh.md`
+  - Never add new `.en.md` files — the unsuffixed file *is* the English version.
   - Filenames are always ASCII slugs — never Chinese filenames.
   - Both versions must share identical Markdown structure (headings, tables, code blocks).
-  - Each version's header links to its counterpart (`[English](…)` / `[中文](…)`).
+  - Each version's header links to its counterpart: `[中文](….zh.md)` in English,
+    `[English](….md)` in Chinese.
   - Editing one language requires updating the other.
 - **Never translate** hex/byte sequences, code blocks, commands, file paths, symbol names,
   error codes, table structure, emoji markers, or the `[CONFIRMED]`/`[INFERRED]` tags.

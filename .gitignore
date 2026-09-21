@@ -1,0 +1,22 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# ---- 运行产物 ----
+# vibekey.py --log 的默认输出（默认写 /tmp，但允许指定相对路径）
+# 注意：docs/evidence/ 下的是留档证据，必须入库，所以后面要取消忽略
+*.log
+!docs/evidence/*.log
+
+# ---- macOS ----
+.DS_Store
+._*
+
+# ---- 编辑器 / IDE ----
+.vscode/
+.idea/
+*.swp
+*~

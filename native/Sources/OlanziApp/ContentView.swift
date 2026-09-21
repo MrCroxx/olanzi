@@ -376,20 +376,14 @@ struct ContentView: View {
     }
     private var longPressOptions: some View {
         HStack(spacing: 10) {
-            Picker(model.l("触发方式"), selection: Binding(
-                get: { model.longPressBehavior() },
-                set: { _ = model.setLongPressBehavior($0) }
-            )) {
-                Text(model.l("保持按住")).tag(LongPressBehavior.hold)
-                Text(model.l("短按一次")).tag(LongPressBehavior.tap)
-                Text(model.l("连按")).tag(LongPressBehavior.burst)
-            }
-            .pickerStyle(.menu).labelsHidden().frame(width: 126)
-            .help(model.longPressBehaviorHelp)
+            longPressModeSelector
             if model.longPressBehavior() == .burst {
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     Button { model.setLongPressTapCount(model.longPressTapCount() - 1) } label: {
-                        Image(systemName: "minus").frame(width: 22, height: 26)
+                        Image(systemName: "minus")
+                            .frame(width: 32, height: 32)
+                            // plain 样式的透明留白默认不响应；整个按钮格都应可点击。
+                            .contentShape(Rectangle())
                     }
                     .disabled(model.longPressTapCount() <= 2)
                     .accessibilityLabel(model.l("减少次数"))
@@ -399,7 +393,9 @@ struct ContentView: View {
                         .accessibilityLabel(model.l("连按次数"))
                         .accessibilityValue(model.lf("%d 次", model.longPressTapCount()))
                     Button { model.setLongPressTapCount(model.longPressTapCount() + 1) } label: {
-                        Image(systemName: "plus").frame(width: 22, height: 26)
+                        Image(systemName: "plus")
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
                     }
                     .disabled(model.longPressTapCount() >= 20)
                     .accessibilityLabel(model.l("增加次数"))
@@ -409,6 +405,35 @@ struct ContentView: View {
                 .help(model.l("连按次数：2–20 次。"))
             }
         }.disabled(!model.canEdit)
+    }
+    private func longPressModeTitle(_ behavior: LongPressBehavior) -> String {
+        switch behavior {
+        case .hold: return model.l("保持按住")
+        case .tap: return model.l("短按一次")
+        case .burst: return model.l("连按")
+        }
+    }
+    private var longPressModeSelector: some View {
+        HStack(spacing: 2) {
+            ForEach(LongPressBehavior.allCases) { behavior in
+                Button { model.setLongPressBehavior(behavior) } label: {
+                    Text(longPressModeTitle(behavior))
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .foregroundStyle(model.longPressBehavior() == behavior ? Palette.background : Palette.text)
+                        .background(model.longPressBehavior() == behavior ? Palette.accent : .clear,
+                                    in: RoundedRectangle(cornerRadius: 5))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(model.longPressBehavior() == behavior ? .isSelected : [])
+            }
+        }
+        .padding(3).frame(width: 264, height: 32)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 7))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(model.l("触发方式"))
+        .help(model.longPressBehaviorHelp)
     }
     private var recordingPreview: String {
         if let error = recorder.error { return model.displayError(error) }

@@ -2,10 +2,12 @@
 """文档双语一致性校验。
 
 按 AGENTS.md §2 的约定检查：
-  1. 每份中文文档都有对应的 .en.md
+  1. 每份英文文档都有对应的 .zh.md
   2. 两版的 Markdown 结构一一对应（标题层级、代码块数、表格形状）
   3. 两版互相有语言切换链接
   4. 所有相对链接都能解析
+
+**英文是默认入口**（文件名不带语言后缀），中文版加 `.zh.md`。
 
 用法:
     python3 tools/check_docs.py          # 从仓库根目录运行
@@ -29,6 +31,8 @@ FENCE_RE = re.compile(r"^\s*```")
 HEX_RE = re.compile(r"\b(?:0[xX][0-9a-fA-F]+|[0-9a-fA-F]{2}(?:\s+[0-9a-fA-F]{2})+)\b")
 CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 INLINE_CODE_RE = re.compile(r"`[^`]*`")
+# 语言切换行 `> 🌐 [中文](…)` —— 英文版里这行本来就含中文，检查残留时要排除
+LANG_SWITCH_RE = re.compile(r"^\s*>\s*🌐.*$", re.M)
 
 
 def hex_tokens(text):
@@ -40,17 +44,26 @@ def hex_tokens(text):
 
 
 def collect_docs():
-    """返回 [(中文路径, 英文路径)]。"""
+    """返回 [(中文路径, 英文路径)]。英文是默认入口（无后缀），中文加 .zh.md。"""
     zh = []
-    for p in sorted(ROOT.rglob("*.md")):
+    for p in sorted(ROOT.rglob("*.zh.md")):
         if any(part in SKIP_DIRS for part in p.parts):
             continue
-        if p.name.endswith(".en.md"):
-            continue
-        if p.name in ("AGENTS.md", "CLAUDE.md"):
+        if p.name in ("AGENTS.zh.md", "CLAUDE.zh.md"):
             continue                       # 项目记忆，不属于文档集
         zh.append(p)
-    return [(p, p.with_name(p.stem + ".en.md")) for p in zh]
+    return [(p, p.with_name(p.name[: -len(".zh.md")] + ".md")) for p in zh]
+
+
+def find_orphan_zh():
+    """找出没有默认英文版的中文文档（说明命名没跟上约定）。"""
+    out = []
+    for p in sorted(ROOT.rglob("*.zh.md")):
+        if any(part in SKIP_DIRS for part in p.parts):
+            continue
+        if not p.with_name(p.name[: -len(".zh.md")] + ".md").exists():
+            out.append(p)
+    return out
 
 
 def strip_literals(text):
@@ -119,6 +132,14 @@ def main():
         return 1
 
     ok = True
+
+    # 0. 不能有孤立的中文版 —— 英文默认版必须存在
+    orphans = find_orphan_zh()
+    if orphans:
+        for o in orphans:
+            print(f"❌ 孤立的中文版（缺少默认英文版）: {o.relative_to(ROOT)}")
+        ok = False
+
     for zh, en in pairs:
         rel = zh.relative_to(ROOT)
         print(f"\n📄 {rel}")
@@ -199,8 +220,8 @@ def main():
             print("   ✅ 所有相对链接有效")
 
         # 6. 英文版散文不应残留中文
-        #    （围栏代码块 + 行内代码里的中文是合法引用，不算漏译）
-        prose = strip_literals(et).replace("中文", "")
+        #    （围栏代码块 + 行内代码里的中文是合法引用，语言切换行也不算漏译）
+        prose = LANG_SWITCH_RE.sub("", strip_literals(et))
         leaked = [l.strip() for l in prose.splitlines() if CJK_RE.search(l)]
         if leaked:
             print(f"   ❌ 英文版**散文**残留中文 {len(leaked)} 行（行内代码引用不算）：")

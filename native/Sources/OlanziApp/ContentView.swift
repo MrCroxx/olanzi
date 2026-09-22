@@ -2,27 +2,10 @@ import AppKit
 import SwiftUI
 import OlanziCore
 
-private enum Palette {
-    static let background = Color(red: 0.115, green: 0.106, blue: 0.106)
-    static let surface = Color(red: 0.212, green: 0.204, blue: 0.204)
-    static let raised = Color(red: 0.255, green: 0.255, blue: 0.255)
-    static let accent = Color(red: 0.91, green: 0.769, blue: 0.722)
-    static let text = Color(white: 0.85)
-}
-
 struct ContentView: View {
     @ObservedObject var model: AppModel
-    @State private var category = "常用"
-    @State private var search = ""
     @State private var profileName = ""
     @State private var showsGestureHelp = false
-    @StateObject private var recorder = ShortcutRecorder()
-    private struct CombinationTarget: Equatable {
-        let index: Int
-        let gesture: AssignmentGesture
-    }
-    @State private var combinationTarget: CombinationTarget?
-    @State private var combination: [KeyEntry] = []
     var body: some View {
         Group {
             if !model.demo && model.needsPermissionSetup {
@@ -36,22 +19,23 @@ struct ContentView: View {
         .tint(Palette.accent).preferredColorScheme(.dark)
         .environment(\.locale, model.localizer.locale)
         .frame(minWidth: 860, minHeight: 690)
-        .onChange(of: model.selected) { _, _ in closeCombinationEditor() }
-        .onChange(of: model.gesture) { _, _ in closeCombinationEditor() }
-        .onChange(of: model.page) { _, _ in closeCombinationEditor() }
-        .onChange(of: model.needsPermissionSetup) { _, _ in closeCombinationEditor() }
-        .onChange(of: recorder.isRecording) { _, recording in
-            if !recording, let candidate = recorder.candidate { combination = candidate }
-        }
-        .onDisappear { recorder.stop() }
+        .buttonStyle(OlanziButtonStyle())
     }
     private var languagePicker: some View {
-        Picker(model.l("语言"), selection: $model.language) {
-            Text(model.l("跟随系统")).tag(AppLanguage.system)
-            Text("简体中文").tag(AppLanguage.simplifiedChinese)
-            Text("English").tag(AppLanguage.english)
+        Menu {
+            Button(model.l("跟随系统")) { model.language = .system }
+            Button("简体中文") { model.language = .simplifiedChinese }
+            Button("English") { model.language = .english }
+        } label: {
+            HStack {
+                Text(model.language == .system ? model.l("跟随系统") : model.language == .english ? "English" : "简体中文")
+                Spacer()
+                Image(systemName: "chevron.down").font(.caption)
+            }.font(.system(size: 13, weight: .medium))
         }
-        .pickerStyle(.menu)
+        .menuStyle(.borderlessButton).menuIndicator(.hidden)
+        .padding(.horizontal, 12).frame(height: 34)
+        .background(Palette.raised, in: RoundedRectangle(cornerRadius: 6))
         .accessibilityLabel(model.l("界面语言"))
     }
     private var appSettings: some View {
@@ -104,7 +88,7 @@ struct ContentView: View {
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, 7)
                 }
-                .buttonStyle(.borderedProminent).controlSize(.large)
+                .buttonStyle(OlanziButtonStyle(.primary)).controlSize(.large)
                 .foregroundStyle(Palette.background)
                 .disabled(model.isCheckingPermissions)
                 if let error = model.permissionSetupError {
@@ -157,13 +141,19 @@ struct ContentView: View {
                 }.padding(.horizontal, 28).padding(.vertical, 12).background(Palette.surface)
             }
             Divider().overlay(Color.white.opacity(0.06))
-            ScrollView {
-                VStack(spacing: 24) {
-                    if model.page == 0 { keymap }
-                    else if model.page == 1 { deviceSettings }
-                    else if model.page == 2 { profiles }
-                    else { appSettings }
-                }.padding(28).frame(maxWidth: .infinity)
+            GeometryReader { viewport in
+                ScrollView {
+                    VStack(spacing: 24) {
+                        if model.page == 0 {
+                            keymap(availableHeight: viewport.size.height - 28,
+                                   availableWidth: viewport.size.width - 48)
+                        } else if model.page == 1 { deviceSettings }
+                        else if model.page == 2 { profiles }
+                        else { appSettings }
+                    }
+                    .padding(.horizontal, 24).padding(.vertical, model.page == 0 ? 14 : 28)
+                    .frame(maxWidth: .infinity)
+                }
             }
             footer
         }
@@ -180,6 +170,7 @@ struct ContentView: View {
                     Label(model.l(item.2), systemImage: item.1).font(.system(size: 14, weight: .medium))
                         .foregroundStyle(model.page == item.0 ? Palette.accent : Color.gray)
                         .frame(width: 82, height: 42)
+                        .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel(model.l(item.2))
             }
             Spacer()
@@ -196,90 +187,92 @@ struct ContentView: View {
             }.frame(minWidth: 150, alignment: .trailing)
         }.padding(.horizontal, 28).padding(.vertical, 13)
     }
-    private var keymap: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            hardware
+    private func keymap(availableHeight: CGFloat, availableWidth: CGFloat) -> some View {
+        // 按窗口剩余空间放大设备区，并让按键区填满余下高度。
+        let scale = min(1.18, max(1, (availableHeight - 562) / 600 + 1), availableWidth / 702)
+        let hardwareHeight = 218 * scale
+        return VStack(alignment: .leading, spacing: 10) {
+            hardware.scaleEffect(scale).frame(height: hardwareHeight)
             Divider()
             gestureEditor
-            keyPicker.disabled(recorder.isRecording)
-        }
-    }
-    private var keyPicker: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                HStack(spacing: 4) {
-                    ForEach(KeyCatalog.categories, id: \.self) { name in
-                        Button(model.categoryTitle(name)) { category = name; search = "" }
-                            .buttonStyle(.plain).font(.system(size: 13, weight: category == name ? .semibold : .regular))
-                            .padding(.horizontal, 8).padding(.vertical, 9)
-                            .background(category == name ? Palette.raised : .clear, in: RoundedRectangle(cornerRadius: 4))
-                            .foregroundStyle(category == name ? Palette.accent : Palette.text)
-                    }
-                }
-                Spacer(minLength: 10)
-                TextField(model.l("搜索按键"), text: $search).textFieldStyle(.roundedBorder).frame(width: 135)
-            }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 73, maximum: 110), spacing: 8)], spacing: 8) {
-                ForEach(KeyCatalog.options.filter { search.isEmpty ? $0.category == category : (model.l($0.label).localizedCaseInsensitiveContains(search) || $0.label.localizedCaseInsensitiveContains(search)) || String(format: "0x%02X", $0.code).localizedCaseInsensitiveContains(search) }) { key in
-                    Button { closeCombinationEditor(); model.assign(key.code) } label: {
-                        Text(model.l(key.label)).font(.system(size: 14, weight: .medium))
-                            .lineLimit(2).multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity).frame(height: 43)
-                            .foregroundStyle(model.code(model.selected, gesture: model.gesture) == key.code ? Palette.background : Palette.text)
-                            .background(model.code(model.selected, gesture: model.gesture) == key.code ? Palette.accent : Palette.surface, in: RoundedRectangle(cornerRadius: 5))
-                    }.buttonStyle(.plain).disabled(!model.canEdit || !model.isSupported(key.code))
-                        .opacity(model.isSupported(key.code) ? 1 : 0.35)
-                        .help(model.l(model.isSupported(key.code) ? "分配给当前动作" : "当前 macOS 不支持此键码"))
-                        .accessibilityLabel(model.lf("分配 %@", model.l(key.label)))
-                }
-            }
+            ActionPalette(model: model, minimumHeight: max(280, availableHeight - hardwareHeight - 65))
         }
     }
     private var hardware: some View {
         HStack(alignment: .top, spacing: 22) {
-            VStack(alignment: .trailing, spacing: 16) {
+            VStack(alignment: .trailing, spacing: 10) {
                 rotationControl(5, title: "左旋", symbol: "arrow.counterclockwise")
-                    .frame(height: 96)
+                    .frame(height: 40)
                 VStack(alignment: .leading, spacing: 10) {
                     Label(model.l("旋钮按下"), systemImage: "hand.tap")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(model.selected == 3 ? Palette.accent : Palette.text)
                     gestureAssignment(3)
+                        .anchorPreference(key: KnobAnchorKey.self, value: .bounds) { [13: $0] }
                 }
                 .frame(width: 272)
-            }.frame(width: 300).padding(.top, 70)
-            deviceBody
+            }.frame(width: 300, alignment: .leading)
+            deviceBody.scaleEffect(0.5).frame(width: 58, height: 210)
+                .transformAnchorPreference(key: KnobAnchorKey.self, value: .bounds) { anchors, anchor in anchors[30] = anchor }
             VStack(alignment: .leading, spacing: 0) {
                 rotationControl(4, title: "右旋", symbol: "arrow.clockwise")
-                    .frame(height: 96)
+                    .padding(.leading, 28).frame(height: 40)
                 Spacer().frame(height: 2)
                 VStack(spacing: 4) {
                     ForEach(0..<3) { index in
-                        HStack(spacing: 10) {
-                            Rectangle().fill(model.selected == index ? Palette.accent : Palette.raised)
-                                .frame(width: 18, height: 1)
+                        HStack(spacing: 0) {
+                            Color.clear.frame(width: 28)
                             gestureAssignment(index)
-                        }.frame(height: 77)
+                                .anchorPreference(key: KnobAnchorKey.self, value: .bounds) { [20 + index: $0] }
+                        }.frame(height: 56)
                     }
                 }
-            }.frame(width: 300).padding(.top, 70)
+            }.frame(width: 300, alignment: .leading)
         }.frame(maxWidth: .infinity)
+        .overlayPreferenceValue(KnobAnchorKey.self) { anchors in
+            GeometryReader { geometry in
+                if let knobAnchor = anchors[3], let deviceAnchor = anchors[30] {
+                    let knob = geometry[knobAnchor]
+                    let device = geometry[deviceAnchor]
+                    ForEach([5, 4, 13, 20, 21, 22], id: \.self) { id in
+                        if let sourceAnchor = anchors[id] {
+                            let source = geometry[sourceAnchor]
+                            let right = id == 4 || id >= 20
+                            let control = id >= 20 ? id - 20 : id == 13 ? 3 : id
+                            // 先取通往旋钮中心的直线，再按统一留白基准截取可见线段。
+                            let sourceX = right ? source.minX : source.maxX
+                            let startX = sourceX + (right ? -10 : 10)
+                            let endX = right ? device.maxX + 22 : device.minX - 22
+                            let slope = id >= 20 ? 0 : (knob.midY - source.midY) / (knob.midX - sourceX)
+                            let start = CGPoint(x: startX, y: source.midY + (startX - sourceX) * slope)
+                            let end = CGPoint(x: endX, y: source.midY + (endX - sourceX) * slope)
+                            Path { path in
+                                path.move(to: start)
+                                path.addLine(to: end)
+                            }
+                            .stroke(model.selected == control ? Palette.accent : Palette.text.opacity(0.35),
+                                    style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round))
+                        }
+                    }
+                }
+            }.allowsHitTesting(false).accessibilityHidden(true)
+        }
     }
     private func gestureAssignment(_ index: Int) -> some View {
         HStack(spacing: 4) {
             ForEach(AssignmentGesture.allCases) { gesture in
                 let selected = model.selected == index && model.gesture == gesture
-                let unset = model.entries(index, gesture: gesture) == nil
-                let title = unset ? model.l("未设置") : model.label(index, gesture: gesture)
+                let unset = model.action(index, gesture: gesture) == nil
+                let title = unset ? model.l("未设置") : assignmentTitle(index, gesture: gesture)
                 Button {
                     model.selected = index
                     model.gesture = gesture
                 } label: {
-                    VStack(spacing: 4) {
-                        Text(model.gestureTitle(gesture)).font(.system(size: 13, weight: .medium))
+                    VStack(spacing: 2) {
+                        Text(model.gestureTitle(gesture)).font(.system(size: 12, weight: .medium))
                             .foregroundStyle(selected ? Palette.accent : Color.secondary)
                         Text(title)
-                            .font(.system(size: 14, weight: selected ? .semibold : .regular))
+                            .font(.system(size: 13, weight: selected ? .semibold : .regular))
                             .foregroundStyle(selected ? Palette.accent : unset ? Color.secondary : Palette.text)
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
@@ -291,12 +284,12 @@ struct ContentView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).disabled(!model.canEdit)
-                .help(gestureAssignmentHelp(index, gesture: gesture, title: title))
+                .help(gestureAssignmentHelp(index, gesture: gesture, title: model.label(index, gesture: gesture)))
                 .accessibilityLabel(model.controlName(index) + " · " + model.gestureTitle(gesture))
-                .accessibilityValue(title + (selected ? model.l("，已选中") : ""))
+                .accessibilityValue(model.label(index, gesture: gesture) + (selected ? model.l("，已选中") : ""))
             }
         }
-        .padding(5).frame(height: 69)
+        .padding(4).frame(height: 54)
         .background(Palette.surface.opacity(0.65), in: RoundedRectangle(cornerRadius: 9))
         .overlay(RoundedRectangle(cornerRadius: 9)
             .stroke(model.selected == index ? Palette.accent.opacity(0.5) : .clear, lineWidth: 1))
@@ -305,6 +298,13 @@ struct ContentView: View {
                 Circle().fill(Palette.accent).frame(width: 5, height: 5).padding(4)
             }
         }
+    }
+    private func assignmentTitle(_ index: Int, gesture: AssignmentGesture = .press) -> String {
+        if case .library(let id) = model.assignedAction(index, gesture: gesture),
+           let item = model.libraryItems.first(where: { $0.id == id }), item.isMacro {
+            return "M\(item.slot)"
+        }
+        return model.label(index, gesture: gesture)
     }
     private func gestureAssignmentHelp(_ index: Int, gesture: AssignmentGesture, title: String) -> String {
         var help = model.lf("%@ · %@：%@", model.controlName(index), model.gestureTitle(gesture), title)
@@ -315,24 +315,25 @@ struct ContentView: View {
     }
     private func rotationControl(_ index: Int, title: String, symbol: String) -> some View {
         Button { model.selected = index } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 if index == 4 { rotationIcon(symbol, selected: model.selected == index) }
-                VStack(alignment: index == 5 ? .trailing : .leading, spacing: 6) {
-                    Text(model.l(title)).font(.system(size: 15, weight: .semibold))
-                    Text(model.label(index)).font(.system(size: 14)).lineLimit(1)
+                VStack(alignment: index == 5 ? .trailing : .leading, spacing: 3) {
+                    Text(model.l(title)).font(.system(size: 13, weight: .medium))
+                    Text(assignmentTitle(index)).font(.system(size: 12)).lineLimit(1)
                 }
                 if index == 5 { rotationIcon(symbol, selected: model.selected == index) }
             }
             .foregroundStyle(model.selected == index ? Palette.accent : Palette.text)
-            .padding(.vertical, 10).contentShape(Rectangle())
+            .padding(.vertical, 4).contentShape(Rectangle())
         }.buttonStyle(.plain).disabled(!model.canEdit)
-            .help(model.controlName(index))
+            .help(model.controlName(index) + " · " + model.label(index))
             .accessibilityLabel(model.l("旋钮" + title)).accessibilityValue(assignmentAccessibility(index))
+            .anchorPreference(key: KnobAnchorKey.self, value: .bounds) { [index: $0] }
     }
     private func rotationIcon(_ symbol: String, selected: Bool) -> some View {
-        Image(systemName: symbol).font(.system(size: 24, weight: .medium))
+        Image(systemName: symbol).font(.system(size: 17, weight: .medium))
             .foregroundStyle(selected ? Palette.background : Palette.accent)
-            .frame(width: 48, height: 48)
+            .frame(width: 32, height: 32)
             .background(selected ? Palette.accent : Palette.surface, in: Circle())
     }
     private var gestureEditor: some View {
@@ -342,21 +343,13 @@ struct ContentView: View {
             Text(model.selected < 4 ? model.gestureTitle(model.gesture) : model.l("转动"))
                 .font(.system(size: 16)).foregroundStyle(Palette.accent)
             Spacer()
-            if model.gesture == .longPress && model.selected < 4 && combinationTarget == nil {
+            if model.gesture == .longPress && model.selected < 4 && model.entries(model.selected, gesture: .longPress) != nil {
                 longPressOptions
             }
-            if combinationTarget != nil { combinationEditor }
-            else {
-                Button(model.l("录制组合键")) {
-                    combinationTarget = CombinationTarget(index: model.selected, gesture: model.gesture)
-                    combination = []
-                    recorder.start(window: NSApp.keyWindow)
-                }.disabled(!model.canEdit)
-                    .help(model.l("系统快捷键可能被 macOS 优先处理。"))
-            }
-            if combinationTarget == nil && model.gesture != .press && model.selected < 4 {
-                Button(model.l("清除动作")) { model.disableGesture() }
-                    .disabled(!model.canEdit || model.entries(model.selected, gesture: model.gesture) == nil)
+            if model.gesture != .press && model.selected < 4 {
+                Button { model.disableGesture() } label: {
+                    Label(model.l("清除动作"), systemImage: "xmark")
+                }.disabled(!model.canEdit || model.action(model.selected, gesture: model.gesture) == nil)
             }
             Button { showsGestureHelp.toggle() } label: {
                 Image(systemName: "questionmark.circle").font(.system(size: 18))
@@ -435,53 +428,10 @@ struct ContentView: View {
         .accessibilityLabel(model.l("触发方式"))
         .help(model.longPressBehaviorHelp)
     }
-    private var recordingPreview: String {
-        if let error = recorder.error { return model.displayError(error) }
-        let preview = recorder.isRecording ? recorder.candidate : combination
-        return preview?.isEmpty == false ? model.actionLabel(entries: preview) : model.l("按下组合键…")
-    }
-    private var combinationEditor: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 10) {
-                Circle().fill(recorder.isRecording ? Palette.accent : Color.secondary).frame(width: 6, height: 6)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(recordingPreview).font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(Palette.accent).fixedSize()
-                }
-                .frame(width: 224, height: 22)
-                .help(recordingPreview + "\n" + model.l("按住需要组合的按键，全部松开后完成。"))
-                Button {
-                    combination = []
-                    recorder.start(window: NSApp.keyWindow)
-                } label: { Image(systemName: "arrow.clockwise").font(.system(size: 14)) }
-                .buttonStyle(.plain).disabled(recorder.isRecording)
-                .help(model.l("重新录制")).accessibilityLabel(model.l("重新录制"))
-            }
-            .padding(.horizontal, 12).padding(.vertical, 9)
-            .background(Palette.surface, in: RoundedRectangle(cornerRadius: 7))
-            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Palette.accent.opacity(recorder.isRecording ? 0.7 : 0.2), lineWidth: 1))
-            Button { closeCombinationEditor() } label: { Image(systemName: "xmark").font(.system(size: 14)) }
-                .buttonStyle(.plain).help(model.l("取消")).accessibilityLabel(model.l("取消"))
-            Button(model.l("使用组合键")) {
-                guard let target = combinationTarget else { return }
-                if model.assign(combination, index: target.index, gesture: target.gesture) {
-                    closeCombinationEditor()
-                }
-            }
-            .buttonStyle(.borderedProminent).foregroundStyle(Palette.background)
-            .disabled(recorder.isRecording || combination.isEmpty || recorder.error != nil)
-        }
-        .onDisappear { recorder.stop() }
-    }
-    private func closeCombinationEditor() {
-        recorder.reset()
-        combinationTarget = nil
-        combination = []
-    }
     private func assignmentAccessibility(_ index: Int) -> String {
         if index >= 4 { return model.label(index) }
         return AssignmentGesture.allCases.map { gesture in
-            model.lf("%@：%@", model.gestureTitle(gesture), model.entries(index, gesture: gesture) == nil ? model.l("未设置") : model.label(index, gesture: gesture))
+            model.lf("%@：%@", model.gestureTitle(gesture), model.action(index, gesture: gesture) == nil ? model.l("未设置") : model.label(index, gesture: gesture))
         }.joined(separator: model.l("，"))
     }
     private var deviceBody: some View {
@@ -509,6 +459,7 @@ struct ContentView: View {
                             .font(.system(size: 28, weight: .light)).foregroundStyle(Color(white: 0.3))
                     }.frame(width: 96, height: 96)
                 }.buttonStyle(.plain).accessibilityLabel(model.l("旋钮按下"))
+                    .anchorPreference(key: KnobAnchorKey.self, value: .bounds) { [3: $0] }
                     .accessibilityValue(assignmentAccessibility(3))
                     .help(model.controlName(3) + " · " + model.label(3))
                 VStack(spacing: 12) {
@@ -571,12 +522,12 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 20) {
             Text(model.l("键位配置")).font(.title2.bold())
             HStack {
-                TextField(model.l("配置名称"), text: $profileName).textFieldStyle(.roundedBorder).frame(maxWidth: 320)
+                TextField(model.l("配置名称"), text: $profileName).textFieldStyle(OlanziTextFieldStyle()).frame(maxWidth: 320)
                 Button(model.l("保存当前配置")) { model.saveProfile(name: profileName); profileName = "" }
                     .disabled(profileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.canEdit)
                 Spacer()
-                Button(model.l("导入…")) { model.importProfile() }
-                Button(model.l("导出…")) { model.exportProfile() }.disabled(!model.canEdit)
+                Button { model.importProfile() } label: { Label(model.l("导入…"), systemImage: "square.and.arrow.down") }
+                Button { model.exportProfile() } label: { Label(model.l("导出…"), systemImage: "square.and.arrow.up") }.disabled(!model.canEdit)
             }
             ForEach(model.profiles) { profile in
                 HStack {
@@ -617,9 +568,17 @@ struct ContentView: View {
                 }
                 Spacer()
                 Button(model.l("撤销更改")) { model.discard() }.disabled(model.draft == nil || model.applying)
-                Button(model.l("保存到本机")) { model.apply() }.buttonStyle(.borderedProminent)
+                Button(model.l("保存到本机")) { model.apply() }.buttonStyle(OlanziButtonStyle(.primary))
                     .foregroundStyle(Palette.background).disabled(!model.hasDraft || !model.canEdit || model.device.busy || model.applying)
             }.controlSize(.large).padding(.horizontal, 28).padding(.vertical, 14)
         }
+    }
+}
+
+/// 用实际控件边界连接旋钮，避免布局缩放后引导线与目标错位。
+private struct KnobAnchorKey: PreferenceKey {
+    static var defaultValue: [Int: Anchor<CGRect>] { [:] }
+    static func reduce(value: inout [Int: Anchor<CGRect>], nextValue: () -> [Int: Anchor<CGRect>]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, latest in latest })
     }
 }

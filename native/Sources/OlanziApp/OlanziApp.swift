@@ -71,8 +71,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem.button?.setAccessibilityLabel(model.l("Olanzi 后台设备服务"))
         let menu = NSMenu()
         let title = NSMenuItem(title: model.status, action: nil, keyEquivalent: ""); title.isEnabled = false; menu.addItem(title)
-        let heartbeatTitle = model.device.heartbeatEnabled ? "心跳运行中" : model.device.connected ? "心跳已暂停" : "等待设备"
+        let heartbeatTitle = model.device.heartbeatPausedForInactivity ? "因空闲已停止保活" : model.device.heartbeatEnabled ? "心跳运行中" : model.device.connected ? "心跳已暂停" : "等待设备"
         let heartbeat = NSMenuItem(title: model.lf("后台运行中 · %@", model.l(heartbeatTitle)), action: nil, keyEquivalent: ""); heartbeat.isEnabled = false; menu.addItem(heartbeat)
+        if model.device.heartbeatPausedForInactivity {
+            let resume = NSMenuItem(title: model.l("恢复保活"), action: #selector(resumeHeartbeat), keyEquivalent: "")
+            resume.target = self
+            menu.addItem(resume)
+        }
         menu.addItem(.separator())
         let open = NSMenuItem(title: model.l("打开 Olanzi…"), action: #selector(showWindow), keyEquivalent: "o"); open.target = self; menu.addItem(open)
         let settings = NSMenuItem(title: model.l("设置…"), action: #selector(showSettings), keyEquivalent: ",")
@@ -82,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let quit = NSMenuItem(title: model.l("退出 Olanzi"), action: #selector(quitApp), keyEquivalent: "q"); quit.target = self; menu.addItem(quit)
         statusItem.menu = menu
     }
+    @objc private func resumeHeartbeat() { model.resumeHeartbeat() }
     @objc private func showSettings() {
         model.page = 3
         showWindow()

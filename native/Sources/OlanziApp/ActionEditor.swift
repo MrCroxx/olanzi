@@ -107,15 +107,15 @@ struct ActionEditor: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .buttonStyle(OlanziButtonStyle())
-        .onChange(of: recorder.isRecording) { _, recording in
-            if !recording {
-                if let id = recordingID, let position = steps.firstIndex(where: { $0.id == id }),
-                   let keys = recorder.candidate, !keys.isEmpty, recorder.error == nil {
-                    steps[position].action = .keyboard(keys)
-                }
-                if let message = recorder.error { error = message }
+        .background(ShortcutRecordingFocus(recorder: recorder).frame(width: 0, height: 0))
+        .onChange(of: recorder.result) { _, result in
+            if let result, let id = recordingID, let position = steps.firstIndex(where: { $0.id == id }) {
+                steps[position].action = .keyboard(result.entries)
                 recordingID = nil
             }
+        }
+        .onChange(of: recorder.error) { _, message in
+            if let message { error = message; recordingID = nil }
         }
         .onChange(of: codeSource) { _, _ in validationMessage = nil }
         .onDisappear { recorder.reset(); macroRecorder.reset() }

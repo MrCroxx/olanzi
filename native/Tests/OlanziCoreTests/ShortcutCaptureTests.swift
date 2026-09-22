@@ -233,4 +233,66 @@ final class ShortcutCaptureTests: XCTestCase {
         XCTAssertTrue(events[1...4].allSatisfy { $0.flags.contains(.maskCommand) })
         XCTAssertEqual(events.last?.flags, [])
     }
+
+    func testReconciliationCompletesCommandChordWhenKeyUpIsMissing() throws {
+        var session = ShortcutRecordingSession()
+        let command = CGEventFlags.maskCommand.rawValue
+        try session.receiveFlagsChanged(keyCode: 55, flags: command)
+        try session.receiveKeyDown(keyCode: 0, flags: command)
+        XCTAssertEqual(session.heldKeyCodes, [0])
+        // Command 已松开，但普通键的 keyUp 没有送达窗口。
+        try session.receiveFlagsChanged(keyCode: 55, flags: 0)
+        XCTAssertFalse(session.isComplete)
+        try session.reconcileReleasedKeys(pressedKeyCodes: [], flags: 0)
+        XCTAssertTrue(session.isComplete)
+        XCTAssertTrue(session.heldKeyCodes.isEmpty)
+        XCTAssertEqual(session.candidate.map(\.code), [0xE3, 0x04])
+    }
+
+    func testReconciliationWaitsForRemainingObservedKeysAndModifiers() throws {
+        var session = ShortcutRecordingSession()
+        let command = CGEventFlags.maskCommand.rawValue
+        try session.receiveKeyDown(keyCode: 0, flags: command)
+        try session.receiveKeyDown(keyCode: 11, flags: command)
+        try session.reconcileReleasedKeys(pressedKeyCodes: [11], flags: command)
+        XCTAssertEqual(session.heldKeyCodes, [11])
+        XCTAssertFalse(session.isComplete)
+        try session.reconcileReleasedKeys(pressedKeyCodes: [], flags: command)
+        XCTAssertFalse(session.isComplete)
+        try session.reconcileReleasedKeys(pressedKeyCodes: [], flags: 0)
+        XCTAssertTrue(session.isComplete)
+        XCTAssertEqual(session.candidate.map(\.code), [0xE3, 0x04, 0x05])
+    }
+
+    func testReconciliationDoesNotRecordUnobservedKeysOrModifiers() throws {
+        var session = ShortcutRecordingSession()
+        let flags = CGEventFlags.maskCommand.rawValue | CGEventFlags.maskSecondaryFn.rawValue
+        try session.reconcileReleasedKeys(pressedKeyCodes: [0, 63], flags: flags)
+        XCTAssertTrue(session.candidate.isEmpty)
+        XCTAssertTrue(session.heldKeyCodes.isEmpty)
+        XCTAssertFalse(session.isComplete)
+        try session.receiveKeyDown(keyCode: 0, flags: 0)
+        try session.reconcileReleasedKeys(pressedKeyCodes: [11, 63], flags: flags)
+        XCTAssertTrue(session.isComplete)
+        XCTAssertEqual(session.candidate.map(\.code), [0x04])
+        // 完成后轮询不能重新开启录制或更改已封存的组合。
+        try session.reconcileReleasedKeys(pressedKeyCodes: [0, 11, 63], flags: flags)
+        XCTAssertTrue(session.heldKeyCodes.isEmpty)
+        XCTAssertEqual(session.candidate.map(\.code), [0x04])
+    }
+
+    func testReconciliationReleasesOnlyExplicitlyObservedFn() throws {
+        let function = CGEventFlags.maskSecondaryFn.rawValue
+        var session = ShortcutRecordingSession()
+        try session.receiveFlagsChanged(keyCode: 63, flags: function)
+        try session.receiveKeyDown(keyCode: 0, flags: function)
+        XCTAssertEqual(session.heldKeyCodes, [0, 63])
+        try session.reconcileReleasedKeys(pressedKeyCodes: [63], flags: 0)
+        XCTAssertFalse(session.isComplete)
+        XCTAssertEqual(session.heldKeyCodes, [63])
+        // function 位可能来自其它功能键；已观测 Fn 的物理状态才决定其释放。
+        try session.reconcileReleasedKeys(pressedKeyCodes: [], flags: function)
+        XCTAssertTrue(session.isComplete)
+        XCTAssertEqual(session.candidate.map(\.code), [1, 0x04])
+    }
 }

@@ -33,11 +33,14 @@ public enum HostAction: Codable, Equatable, Sendable {
     case application(ApplicationTarget)
     case macro([MacroStep])
     case library(UUID)
+    case momentaryLayer(Int)
 
     public func validate() throws {
         switch self {
         // 引用目标由整份配置校验；UUID 自身没有额外格式需要校验。
         case .library: break
+        case .momentaryLayer(let layer):
+            guard (1...3).contains(layer) else { throw HostKeymapError.invalidLayer }
         case .keyboard(let entries): try MacKeyEmitter.validate(entries: entries)
         case .application(let target): try target.validate()
         case .macro(let steps):
@@ -100,7 +103,7 @@ public struct NamedHostAction: Codable, Equatable, Identifiable, Sendable {
         guard (0..<16).contains(slot) else { throw HostActionError.invalidLibrarySlot }
         switch action {
         case .application, .macro: try action.validate()
-        case .keyboard, .library: throw HostActionError.invalidLibraryAction
+        case .keyboard, .library, .momentaryLayer: throw HostActionError.invalidLibraryAction
         }
     }
 }

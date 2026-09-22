@@ -74,6 +74,7 @@ final class HostActionRunner {
         case .application(let target): steps = [.application(target)]
         case .macro(let sequence): steps = sequence
         case .library: throw HostActionError.missingLibraryAction
+        case .momentaryLayer: throw HostKeymapError.invalidLayerAction
         }
         queue.append(Work(index: index, steps: steps))
         return true

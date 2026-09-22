@@ -7,6 +7,7 @@ final class VendorKeyBridge {
     private(set) var status = FnStatus()
     private var configuration: HostKeymap?
     private var router = GestureRouter()
+    private let actions: HostActionRunner
     private var held: [Int: [KeyEntry]] = [:]
     private var pendingReleases = Set<Int>()
     private var connected = false
@@ -32,7 +33,9 @@ final class VendorKeyBridge {
          request: @escaping () -> Void = {},
          prepare: @escaping () throws -> Void = {},
          now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+         launcher: ApplicationLauncher = .native,
          emit: @escaping ([KeyEntry], Bool, CGEventFlags) throws -> Void) {
+        self.actions = HostActionRunner(launcher: launcher)
         self.permissions = permissions
         self.request = request
         self.prepare = prepare
@@ -42,6 +45,7 @@ final class VendorKeyBridge {
 
     func synchronize(configuration: HostKeymap?, connected: Bool, online: Bool?) {
         if self.configuration != configuration {
+            actions.cancel()
             _ = router.configure(configuration)
             releaseAll()
             self.configuration = configuration
@@ -83,10 +87,12 @@ final class VendorKeyBridge {
             }
         }
         if !status.active {
+            actions.cancel()
             _ = router.cancel(quarantine: connected)
             releaseAll()
         } else {
             process(router.advance(to: now()))
+            pumpActions()
         }
         // 权限提示独立于设备和配置状态，初始化失败时也必须让用户看到授权入口。
         if !granted {
@@ -102,6 +108,7 @@ final class VendorKeyBridge {
         guard status.active else { router.observeWhileSuspended(event); return }
         log.debug("AU05 厂商按键：控件=\(event.index)，按下=\(event.pressed)")
         process(router.receive(event, at: now()))
+        pumpActions()
         status.error = fault
         updatePressed()
     }
@@ -112,6 +119,9 @@ final class VendorKeyBridge {
         for transition in transitions {
             do {
                 switch transition {
+                case .execute(let index, let action):
+                    try actions.enqueue(index: index, action: action)
+                    completed = true
                 case .begin(let index, let entries):
                     try press(index: index, entries: entries)
                     completed = true
@@ -127,11 +137,25 @@ final class VendorKeyBridge {
                 // 任意边沿失败即取消该控件的后续连按，补 up 仍走现有释放重试机制。
                 // 不能因此释放另一个控件仍持有的共享键。
                 switch transition {
-                case .begin(let index, _), .end(let index): router.cancel(index: index)
+                case .begin(let index, _), .end(let index), .execute(let index, _): router.cancel(index: index)
                 }
             }
         }
         if completed && !failed && pendingReleases.isEmpty { fault = nil }
+    }
+
+    private func pumpActions() {
+        guard pendingReleases.isEmpty else {
+            actions.cancel()
+            // 其它控件释放失败也会取消宏；同时释放宏所有权，不能遗留已按下的键。
+            do { try release(index: HostActionRunner.keyboardOwner) }
+            catch { fault = error.localizedDescription }
+            return
+        }
+        do {
+            try actions.pump(at: now(), press: { try self.press(index: HostActionRunner.keyboardOwner, entries: $0) },
+                             release: { try self.release(index: HostActionRunner.keyboardOwner) })
+        } catch { fault = error.localizedDescription }
     }
 
     private func press(index: Int, entries: [KeyEntry]) throws {
@@ -196,6 +220,7 @@ final class VendorKeyBridge {
 
     func close() {
         status.active = false
+        actions.cancel()
         _ = router.cancel(quarantine: false)
         for _ in 0..<3 where !held.isEmpty { releaseAll() }
         updatePressed()

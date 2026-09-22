@@ -211,14 +211,38 @@ final class AppModel: ObservableObject {
     func isDirty(_ index: Int) -> Bool {
         if device.hostConfigurationMissing { return true }
         guard let draft else { return false }
-        return draft.controls.first { $0.index == index } != device.hostKeymap?.controls.first { $0.index == index }
+        let current = draft.controls.first { $0.index == index }
+        guard current == device.hostKeymap?.controls.first(where: { $0.index == index }) else { return true }
+        guard let current else { return false }
+        return [current.effectivePress, current.effectiveDoublePress, current.effectiveLongPress].contains { action in
+            guard case .library(let id) = action else { return false }
+            return draft.actionLibrary.first(where: { $0.id == id }) != device.hostKeymap?.actionLibrary.first(where: { $0.id == id })
+        }
     }
-    func entries(_ index: Int, gesture: AssignmentGesture = .press) -> [KeyEntry]? {
+    func action(_ index: Int, gesture: AssignmentGesture = .press) -> HostAction? {
+        keymap?.resolve(assignedAction(index, gesture: gesture))
+    }
+    func assignedAction(_ index: Int, gesture: AssignmentGesture = .press) -> HostAction? {
         guard let control = control(index) else { return nil }
         switch gesture {
-        case .press: return control.press
-        case .doublePress: return control.doublePress
-        case .longPress: return control.longPress
+        case .press: return control.effectivePress
+        case .doublePress: return control.effectiveDoublePress
+        case .longPress: return control.effectiveLongPress
+        }
+    }
+    func entries(_ index: Int, gesture: AssignmentGesture = .press) -> [KeyEntry]? {
+        guard case .keyboard(let entries) = action(index, gesture: gesture) else { return nil }
+        return entries
+    }
+    func actionLabel(_ action: HostAction?) -> String {
+        guard let action else { return l("关闭") }
+        switch action {
+        case .keyboard(let entries): return actionLabel(entries: entries)
+        case .application(let target): return lf("切换到 %@", target.name)
+        case .macro(let steps): return lf("宏 · %d 步", steps.count)
+        case .library(let id):
+            guard let item = libraryItems.first(where: { $0.id == id }) else { return l("引用的功能不存在，请重新选择。") }
+            return libraryItemLabel(item)
         }
     }
     func code(_ index: Int, gesture: AssignmentGesture = .press) -> UInt8? {
@@ -227,7 +251,7 @@ final class AppModel: ObservableObject {
     }
     func label(_ index: Int, gesture: AssignmentGesture = .press) -> String {
         guard canEdit else { return l("本机配置未就绪") }
-        return actionLabel(entries: entries(index, gesture: gesture))
+        return actionLabel(assignedAction(index, gesture: gesture))
     }
     static func actionLabel(_ entries: [KeyEntry]?) -> String {
         guard let entries else { return "关闭" }
@@ -252,8 +276,8 @@ final class AppModel: ObservableObject {
     func extendedLabel(_ index: Int) -> String? {
         guard index < 4, let control = control(index) else { return nil }
         var labels: [String] = []
-        if let action = control.doublePress { labels.append(lf("双击 %@", actionLabel(entries: action))) }
-        if let action = control.longPress { labels.append(lf("长按 %@", actionLabel(entries: action))) }
+        if let action = control.effectiveDoublePress { labels.append(lf("双击 %@", actionLabel(action))) }
+        if let action = control.effectiveLongPress { labels.append(lf("长按 %@", actionLabel(action))) }
         return labels.isEmpty ? nil : labels.joined(separator: " · ")
     }
     var fnBehaviorHint: String? {
@@ -266,7 +290,7 @@ final class AppModel: ObservableObject {
             case .burst: return lf("达到长按阈值后连按 Fn %d 次；松开后仍完成本组，继续按住不会重复。", longPressTapCount())
             }
         }
-        if gesture == .press, let control = control(selected), control.doublePress == nil, control.longPress == nil {
+        if gesture == .press, let control = control(selected), control.effectiveDoublePress == nil, control.effectiveLongPress == nil {
             return l("Fn 跟随物理按键持续按住，松开时释放。按住呼出输入法无需额外设置长按。")
         }
         return l("此手势的 Fn 是一次短按。需要持续按住时，请关闭此控件的双击和长按，或将 Fn 分配给使用“保持按住”的长按动作。")
@@ -284,21 +308,102 @@ final class AppModel: ObservableObject {
     }
     @discardableResult
     func assign(_ entries: [KeyEntry], index: Int? = nil, gesture: AssignmentGesture? = nil) -> Bool {
+        guard !entries.isEmpty else { notice = "组合键不能为空。"; return false }
+        return assignAction(.keyboard(entries), index: index, gesture: gesture)
+    }
+    @discardableResult
+    func assignAction(_ action: HostAction, index: Int? = nil, gesture: AssignmentGesture? = nil) -> Bool {
         let index = index ?? selected
         guard canEdit, var map = keymap,
               let position = map.controls.firstIndex(where: { $0.index == index }) else { return false }
-        guard !entries.isEmpty else { notice = "组合键不能为空。"; return false }
-        do { try MacKeyEmitter.validate(entries: entries) }
+        do { try action.validate() }
         catch { notice = error.localizedDescription; return false }
-        // 录制确认可传入开始时捕获的目标，不跟随录制期间的新选择漂移。
+        // 编辑器确认始终写回打开时的目标；键盘动作保留旧格式，清除覆盖动作。
         let targetGesture = index >= 4 ? AssignmentGesture.press : (gesture ?? self.gesture)
+        let entries: [KeyEntry]
+        let override: HostAction?
+        if case .keyboard(let keys) = action { entries = keys; override = nil }
+        else { entries = []; override = action }
         switch targetGesture {
-        case .press: map.controls[position].press = entries
-        case .doublePress: map.controls[position].doublePress = entries
-        case .longPress: map.controls[position].longPress = entries
+        case .press:
+            map.controls[position].press = entries
+            map.controls[position].pressAction = override
+        case .doublePress:
+            map.controls[position].doublePress = override == nil ? entries : nil
+            map.controls[position].doublePressAction = override
+        case .longPress:
+            map.controls[position].longPress = override == nil ? entries : nil
+            map.controls[position].longPressAction = override
         }
+        do { try map.validate() }
+        catch { notice = error.localizedDescription; return false }
         updateDraft(map)
         return true
+    }
+    var libraryItems: [NamedHostAction] {
+        (keymap?.actionLibrary ?? []).sorted {
+            if $0.isMacro != $1.isMacro { return $0.isMacro }
+            return $0.slot < $1.slot
+        }
+    }
+    func libraryItemLabel(_ item: NamedHostAction) -> String {
+        "\(item.isMacro ? "M" : "A")\(item.slot) · \(item.name)"
+    }
+    func usageCount(_ id: UUID) -> Int {
+        (keymap?.controls ?? []).reduce(0) { count, control in
+            count + [control.effectivePress, control.effectiveDoublePress, control.effectiveLongPress].filter { action in
+                if case .library(let reference) = action { return reference == id }
+                return false
+            }.count
+        }
+    }
+    func canRemoveLibraryAction(_ id: UUID) -> Bool {
+        libraryItems.contains(where: { $0.id == id }) && usageCount(id) == 0
+    }
+    @discardableResult
+    func saveLibraryAction(id: UUID?, name: String, action: HostAction) -> UUID? {
+        guard canEdit, var map = keymap else { return nil }
+        let previous = id.flatMap { id in map.actionLibrary.first { $0.id == id } }
+        guard id == nil || previous != nil else { notice = "引用的功能不存在，请重新选择。"; return nil }
+        let isMacro: Bool
+        switch action {
+        case .macro: isMacro = true
+        case .application: isMacro = false
+        case .keyboard, .library: notice = "功能库只能保存 APP 或宏，不能嵌套引用。"; return nil
+        }
+        let slot: Int
+        if let previous, previous.isMacro == isMacro { slot = previous.slot }
+        else {
+            let occupied = Set(map.actionLibrary.filter { $0.isMacro == isMacro && $0.id != id }.map(\.slot))
+            guard let available = (0..<16).first(where: { !occupied.contains($0) }) else {
+                notice = "宏和 APP 功能各支持 16 个编号（0–15）。"; return nil
+            }
+            slot = available
+        }
+        let item = NamedHostAction(id: id ?? UUID(), name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                                   slot: slot, action: action)
+        if let position = map.actionLibrary.firstIndex(where: { $0.id == item.id }) { map.actionLibrary[position] = item }
+        else { map.actionLibrary.append(item) }
+        do { try map.validate() }
+        catch { notice = error.localizedDescription; return nil }
+        updateDraft(map)
+        return item.id
+    }
+    @discardableResult
+    func removeLibraryAction(_ id: UUID) -> Bool {
+        guard canEdit, var map = keymap, map.actionLibrary.contains(where: { $0.id == id }) else { return false }
+        guard usageCount(id) == 0 else {
+            notice = "此功能仍有按键绑定，请先解除绑定后再删除。"; return false
+        }
+        map.actionLibrary.removeAll { $0.id == id }
+        do { try map.validate() }
+        catch { notice = error.localizedDescription; return false }
+        updateDraft(map)
+        return true
+    }
+    @discardableResult
+    func assignLibraryAction(_ id: UUID) -> Bool {
+        assignAction(.library(id))
     }
     func longPressBehavior(index: Int? = nil) -> LongPressBehavior {
         control(index ?? selected)?.longPressBehavior ?? .hold
@@ -345,8 +450,13 @@ final class AppModel: ObservableObject {
     func disableGesture() {
         guard selected < 4, gesture != .press, canEdit, var map = keymap,
               let position = map.controls.firstIndex(where: { $0.index == selected }) else { return }
-        if gesture == .doublePress { map.controls[position].doublePress = nil }
-        else { map.controls[position].longPress = nil }
+        if gesture == .doublePress {
+            map.controls[position].doublePress = nil
+            map.controls[position].doublePressAction = nil
+        } else {
+            map.controls[position].longPress = nil
+            map.controls[position].longPressAction = nil
+        }
         updateDraft(map)
     }
     func discard() { draft = nil; notice = nil }
@@ -410,9 +520,14 @@ final class AppModel: ObservableObject {
     }
     func profileSummary(_ profile: HostProfile) -> String {
         profile.keymap.controls.sorted { $0.index < $1.index }.map { control in
-            var text = actionLabel(entries: control.press)
-            if control.doublePress != nil { text += " / " + gestureTitle(.doublePress) }
-            if control.longPress != nil { text += " / " + gestureTitle(.longPress) }
+            let textAction = control.effectivePress
+            let primaryLabel: String
+            if case .library(let id) = textAction, let item = profile.keymap.actionLibrary.first(where: { $0.id == id }) {
+                primaryLabel = libraryItemLabel(item)
+            } else { primaryLabel = actionLabel(textAction) }
+            var text = primaryLabel
+            if control.effectiveDoublePress != nil { text += " / " + gestureTitle(.doublePress) }
+            if control.effectiveLongPress != nil { text += " / " + gestureTitle(.longPress) }
             return text
         }.joined(separator: " · ")
     }

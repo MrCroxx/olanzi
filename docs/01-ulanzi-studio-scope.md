@@ -9,24 +9,26 @@
 >
 > Tagging convention: **[CONFIRMED]** = direct evidence (measured data or binary literal); **[INFERRED]** = inferred from indirect evidence, to be verified.
 >
-> 📚 Docs set: [README](../README.md) · **01 Scope and Responsibility Boundaries** · [02 Protocol](02-vibekey-protocol.md) · [03 Tool Manual](03-tool-manual.md) · [04 Reverse-Engineering Methodology](04-methodology.md) · [05 Verification Log](05-verification-log.md)
+> 📚 Docs set: [README](../README.md) · **01 Scope and Responsibility Boundaries** · [02 Protocol](02-vibekey-protocol.md) · [03 Tool Manual](03-tool-manual.md) · [04 Reverse-Engineering Methodology](04-methodology.md) · [05 Verification Log](05-verification-log.md) · [10 Input Runtime](10-input-runtime.md)
 >
 > ⚠️ This document is a **Phase 1** snapshot (written before the protocol was solved); some "to be confirmed" items are **already done**, see §5 and [02](02-vibekey-protocol.md).
 
 ---
 
+> Scope update (2026-09-21): the early standard-HID observations below apply to the state without Studio's dedicated heartbeat. Later testing found that sending this heartbeat from Olanzi stops direct standard-key injection and produces vendor events, requiring host forwarding even for ordinary keys. Original records are retained; see [07 §4](07-heartbeat-investigation.md) for the new comparison and field definitions.
+
 ## 0. Conclusions at a Glance (read this first)
 
 | Question | Conclusion |
 |---|---|
-| How do Vibe Key's keys reach the computer? | **Standard USB HID keyboard reports**; no private protocol needed **[CONFIRMED]** |
-| Then what does Ulanzi Studio manage? | **Output** (indicator light / status / LED / firmware OTA) and **configuration** (profiles, bindings, brightness) |
+| How do Vibe Key's keys reach the computer? | **Standard USB HID keyboard reports** in the historical state without Studio heartbeat; heartbeat mode uses vendor events **[CONFIRMED]** |
+| Then what does Ulanzi Studio manage? | **Output** (indicator light / status / LED / firmware OTA), **configuration** (profiles, bindings, brightness), and host key forwarding in heartbeat mode |
 | How does Vibe Coding's AI state reach the device? | For **WiFi devices**, plain HTTP can bypass Studio; for **Vibe Key (USB-only), Studio is mandatory** **[INFERRED, see §4.2]** |
 | What is the plugin system? | A local WebSocket at `127.0.0.1:3906`, **no authentication, no path routing**; the protocol can be fully replicated **[CONFIRMED]** |
 | Can we just write a Studio replacement? | Yes, but the private HID protocol in `kwdm.dylib` must be replicated — **✅ Done, see [02](02-vibekey-protocol.md)** |
 
-**In one sentence**: Ulanzi Studio's core value is not "key input" (that is a free keyboard supplied by the device firmware), but
-**① translating AI agent state into indicator light effects**, **② firmware OTA**, and **③ the plugin ecosystem and cloud marketplace**.
+**Historical summary boundary**: in direct-output mode, the firmware supplies keyboard input. Studio also handles
+**① translating AI agent state into indicator light effects**, **② firmware OTA**, and **③ the plugin ecosystem and cloud marketplace**. Vendor-event mode after dedicated heartbeats additionally requires host key forwarding.
 
 ---
 
@@ -133,7 +135,7 @@ This was the focus of this phase; the structure has **three stages**:
 
 This is the most valuable finding of this phase.
 
-### 3.1 ⭐ Device Key Input Needs No Private Protocol At All **[CONFIRMED]**
+### 3.1 ⭐ Standard HID Without the Dedicated Heartbeat **[CONFIRMED]**
 
 The Vibe Key dongle (`AU05`) is a **USB composite device** that enumerates the following interfaces at once:
 
@@ -155,14 +157,14 @@ each one corresponding to one of your actions, with **not a single frame on the 
 | Knob twist → right (second time) | `0x2a` Backspace |
 | Knob press | `0x46` PrintScreen |
 
-> **Corollary**: to build an open-source client that "reads keys", standard HID is enough — **zero reverse-engineering cost**.
+> **Scope of that observation**: standard HID suffices before Studio's dedicated heartbeat is sent; this does not extend to vendor-event mode while the heartbeat runs.
 > And the device can also **inject keyboard and mouse input** directly into the Mac (this is how it controls Claude Code).
 >
 > ✅ **Done**: the mapping table has been pinned down through controlled ordered experiments and cross-verified against the on-device configuration table.
 > 6 controls = `01 / 28 / 29 / 46 / 4f / 2a`, see [02 §5](02-vibekey-protocol.md).
 > **And these key codes are now writable** — see [02 §6 Programmable Key Table](02-vibekey-protocol.md).
 
-### 3.2 The Vendor Channel Is a **Periodic Heartbeat**, Not Key Presses **[CONFIRMED]**
+### 3.2 That Capture Showed Only **Periodic Notices** on the Vendor Channel **[CONFIRMED]**
 
 During your interaction the vendor interface (interface 3) sent only 4 frames, with timestamp intervals of
 `10.100s / 10.100s / 10.100s` — an **exact period**, uncorrelated with key press times.

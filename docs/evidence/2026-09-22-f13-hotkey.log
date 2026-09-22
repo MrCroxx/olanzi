@@ -1,0 +1,25 @@
+Olanzi event log (signed build, physical knob press)
+2026-09-22 00:17:33.594 Db Olanzi[14281:1fe7041] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=3，按下=true
+2026-09-22 00:17:33.596 Db Olanzi[14281:1fe7041] [com.mrcroxx.olanzi:emitter] type=10 keycode=105 flags=545259520
+2026-09-22 00:17:33.835 Db Olanzi[14281:1fe7041] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=3，按下=false
+2026-09-22 00:17:33.840 Db Olanzi[14281:1fe7041] [com.mrcroxx.olanzi:emitter] type=11 keycode=105 flags=545259520
+2026-09-22 00:17:35.915 Db Olanzi[14281:1fe7041] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=3，按下=true
+2026-09-22 00:17:35.915 Db Olanzi[14281:1fe7041] [com.mrcroxx.olanzi:emitter] type=10 keycode=105 flags=545259520
+2026-09-22 00:17:36.005 Db Olanzi[14281:1fe7041] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=3，按下=false
+2026-09-22 00:17:36.007 Db Olanzi[14281:1fe7041] [com.mrcroxx.olanzi:emitter] type=11 keycode=105 flags=545259520
+2026-09-22 00:17:37.961 Db Olanzi[14281:1fe7041] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=3，按下=true
+2026-09-22 00:17:37.961 Db Olanzi[14281:1fe7041] [com.mrcroxx.olanzi:emitter] type=10 keycode=105 flags=545259520
+2026-09-22 00:17:38.107 Db Olanzi[14281:1fe7041] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=3，按下=false
+2026-09-22 00:17:38.108 Db Olanzi[14281:1fe7041] [com.mrcroxx.olanzi:emitter] type=11 keycode=105 flags=545259520
+
+Raycast script log
+[2026-09-22 00:17:33] Focus ChatGPT 启动
+已发送聚焦快捷键；请确认 ChatGPT 输入光标。
+
+[2026-09-22 00:17:35] Focus ChatGPT 启动
+已发送聚焦快捷键；请确认 ChatGPT 输入光标。
+
+[2026-09-22 00:17:37] Focus ChatGPT 启动
+已发送聚焦快捷键；请确认 ChatGPT 输入光标。
+
+User observation: 两次都成功聚焦输入框

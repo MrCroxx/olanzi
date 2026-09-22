@@ -1,19 +1,23 @@
-# olanzi · Ulanzi Vibe Key reverse engineering & open-source client
+# olanzi · A lightweight Ulanzi device workspace
 
 > 🌐 [中文](README.zh.md)
 
-> Free the Ulanzi Vibe Key (AU05) from Ulanzi Studio.
-> **Pure Python standard library + system IOKit — no Studio, no third-party packages.**
+> 📚 Docs set: [01 Scope](docs/01-ulanzi-studio-scope.md) · [02 Protocol](docs/02-vibekey-protocol.md) · [03 Tool Manual](docs/03-tool-manual.md) · [04 Methodology](docs/04-methodology.md) · [05 Verification Log](docs/05-verification-log.md) · [06 Workspace](docs/06-local-workspace.md) · [07 Heartbeat](docs/07-heartbeat-investigation.md) · [08 Mac Fn](docs/08-mac-fn.md) · [09 Native macOS](docs/09-native-macos.md) · [10 Input Runtime](docs/10-input-runtime.md)
+
+> A lightweight Studio alternative for Ulanzi devices, starting with Vibe Key (AU05) key configuration.
+> **Native SwiftUI + AppKit menu-bar app using IOKit / CoreGraphics directly; the main app needs no Python, browser, or HTTP service.**
 
 ---
 
 ## In a sentence
 
+Olanzi is an extensible native macOS device workspace, offering Studio-style device management in a lightweight menu-bar app. The first modules provide VIA-inspired visual key configuration, background heartbeats, and Fn key assignments; further capabilities follow verified protocol support. The Python web prototype and reverse-engineering tools remain as research references.
+
 The Ulanzi Vibe Key is a USB composite HID device. Ulanzi Studio wrapped a private
 protocol around it, so it looked like "you must install Studio to use it". We tore that layer off:
 
 ```
-✅ Read keys      standard HID keyboard reports, zero cost
+✅ Read keys      standard HID in direct-output mode; vendor events in Studio-heartbeat mode
 ✅ Remap keys     vendor channel 01 06 50 04, persisted on-device, measured working
 ✅ Read device state   firmware / battery / noise reduction / indicator light / SN / UUID
 ✅ Decrypt the private protocol   TEA-ECB, key and algorithm fully recovered, 85-command table
@@ -22,6 +26,42 @@ protocol around it, so it looked like "you must install Studio to use it". We to
 ---
 
 ## Quick start
+
+### Native macOS app
+
+Requires macOS 14 or later and a Swift 6 toolchain; the source uses Swift 5 language mode. Build and open from the repository root:
+
+```bash
+make dev
+```
+
+`make release` builds and signs the Release app and packages `build/Olanzi-<version>-<arch>.dmg`; `make dmg` is an alias. Open the DMG and drag Olanzi into Applications to install. The disk image uses the same signing certificate as the app; this local signing is not Apple notarization.
+
+`make dev` builds and opens a Debug version through the existing packaging script, producing `build/Olanzi.app`. The main app has a complete SwiftUI keymap interface and AppKit menu bar; it needs no Python process, browser, or local HTTP service. Quit official Studio and any legacy tool holding the device, plug in the receiver, turn on Vibe Key, then select a control, edit its keycode, and apply in the app.
+
+The interface supports English and Simplified Chinese. Open Settings from the main window’s top navigation or the macOS application menu (`Cmd-,`) to choose Follow System, English, or Simplified Chinese; the permission welcome page also has a language selector. Follow System is the default and falls back to English for unsupported system languages. Changes take effect immediately and are remembered without restarting, changing key mappings, or discarding drafts. User-defined profile names and file paths remain unchanged.
+
+Use **Record Shortcut** beside the action title to capture a combination in a compact inline bar. Hold the desired keys together, such as A+B or Control+A+B, then release them all to preview the result. Choose **Use Shortcut** to update the draft and save it to this Mac to activate it; combinations are simultaneous key holds, not timed macros.
+
+Configure six actions: three keys plus knob press, right twist, and left twist. Each push control supports a primary action and optional double-press/long-press actions; rotary ticks remain immediate. When editing a long-press action, use the compact mode menu to choose **Hold** (the default), **Tap Once**, or **Repeat**. Hold lasts until release; Tap Once emits one pulse; Repeat emits the configured number of pulses after the threshold, defaulting to 2 and adjustable from 2–20. Releasing the control does not stop an already-triggered repeat group, and continuing to hold it does not repeat the group. Existing Hold and Tap Once profiles remain compatible; older profiles without a mode default to Hold. Normal edits save an atomic host map without rewriting device keycodes. Macros, multimedia, and lighting remain outside this implementation. Closing the window leaves the menu-bar app maintaining its device connection, heartbeats, and key forwarding through the saved host map; quit through the menu to stop it. No login item or boot service is installed.
+
+```bash
+# Isolated demo without real hardware access
+swift run --package-path native Olanzi --demo
+
+# Native core tests
+swift test --package-path native
+```
+
+Studio heartbeats switch keys to the vendor-event path, so both ordinary keys and Fn need host forwarding through the saved host map and Input Monitoring plus Accessibility permissions for **Olanzi App**. Heartbeats are enabled only with a valid local map, an online device, and the required permissions; otherwise they pause while read-only queries remain available. The app loads an existing host configuration first. If none exists, it provides an editable factory-key draft even without a device; only an explicit local save persists and activates it. Existing device mappings do not determine this draft or block editing. `从设备键位导入` (import device mappings) is an optional profile-page action: it validates the snapshot and loads a draft, or identifies the unsupported control while retaining the current draft. No device mappings are rewritten. A corrupt local configuration file is preserved and requires repair followed by an app restart. Select **Fn** in the modifier category and apply; no additional switch is needed, and drafts do not affect forwarding. Fn uses device keycode `0x01`, also assigned to the factory top key. Keep the app path and signing certificate stable; identity changes may require renewed authorization. The earlier vendor-forwarding build was physically verified with Enter and Doubao Fn; the new runtime architecture, migration, gesture rules, and checks are documented in [10 · Daemon Input Runtime](docs/10-input-runtime.md).
+
+The main window shows battery percentage and charging status below the connection status, refreshing through a read-only query every 20 seconds while online. Levels at or below 20% appear orange; offline or unavailable readings show `电量 —`. Battery-query failures are reported separately and do not disable Fn forwarding.
+
+Double-press and long-press actions remain supported. To move a configuration between Macs, export the complete `HostProfile` JSON and import it on the other Mac, then explicitly save it locally. The profile includes primary, double-press, and long-press actions, the long-press trigger behavior and repeat count, and timing values. Automatic cross-Mac synchronization through the device is not provided, and this workflow does not write device mappings.
+
+See **[09 · Native macOS App](docs/09-native-macos.md)** for builds, menu-bar lifecycle, permissions, and verification limits. The old Python/browser prototype and daemon instructions remain in [06 · Legacy Local Workspace Prototype](docs/06-local-workspace.md), rather than serving as the main app entry point. See [08 · Mac Fn](docs/08-mac-fn.md) for the underlying mechanism.
+
+### Existing terminal tool
 
 ```bash
 cd olanzi
@@ -47,7 +87,7 @@ The output looks like this:
 > ⚠️ **Keys really are injected into your focused window** (key 2 types `Enter`, key 3 types `Esc`, the knob types arrow keys / Backspace).
 > The program disables terminal echo by default to keep the output clean; add `--echo` to see the typed characters again.
 
-### Prerequisite: Input Monitoring permission
+### Terminal key monitoring prerequisite: Input Monitoring permission
 
 macOS needs the **Input Monitoring** permission to read the keyboard interface.
 
@@ -72,7 +112,7 @@ Without the permission the program prints a red warning and retries automaticall
 
 | Control | HID keycode | Meaning |
 |---|---|---|
-| Key 1 (top) | `0x01` | ErrorRollOver — **invalid code, the system ignores it outright** |
+| Key 1 (top) | `0x01` | ErrorRollOver — **ignored natively by the OS**; the native app automatically uses it as the Fn trigger from confirmed mappings |
 | Key 2 (middle) | `0x28` | Enter |
 | Key 3 (bottom) | `0x29` | Esc |
 | Knob twist → right | `0x4F` | RightArrow |
@@ -82,7 +122,7 @@ Without the permission the program prints a red warning and retries automaticall
 
 > **Key 1 is "crippled"** — it sends an invalid code, so without Studio it does nothing.
 > That is not a bug, it is by design: key 1 is the AI chat key, tied to the vendor's own software.
-> **Now you can remap it** — see below.
+> **Now you can remap it**, or retain that keycode for automatic Fn conversion by the native app once permissions are granted. Vendor events select bindings by physical control index rather than using the old standard-HID prototype's same-code identification.
 
 ---
 
@@ -90,7 +130,7 @@ Without the permission the program prints a red warning and retries automaticall
 
 | Handled by the device / OS | Handled by Ulanzi Studio |
 |---|---|
-| ✅ Key input (standard HID, injected straight into the OS) | ⬜ Indicator light effects (AI state → lighting effect) |
+| ✅ Direct standard HID without Studio heartbeat; host forwarding in heartbeat mode | ⬜ Indicator light effects (AI state → lighting effect) |
 | ✅ Key table (we can now read and write it) | ⬜ Firmware OTA |
 | ✅ Multimedia keys / mouse | ⬜ Plugin ecosystem, cloud marketplace |
 | | ⬜ profile management, multi-device orchestration |
@@ -108,12 +148,17 @@ The complete phase-1 analysis is in [docs/01-ulanzi-studio-scope.md](docs/01-ula
 | **[03 · Tool Manual](docs/03-tool-manual.md)** | Every `vibekey.py` option, output interpretation, troubleshooting |
 | **[04 · Methodology](docs/04-methodology.md)** | How we reversed it: reproducible steps, key breakthroughs, pitfalls |
 | **[05 · Verification Log](docs/05-verification-log.md)** | All measured data on record (including failed attempts) |
+| **[06 · Legacy Local Workspace Prototype](docs/06-local-workspace.md)** | Retained Python/browser prototype, profiles, and daemon instructions |
+| **[07 · Heartbeat Investigation](docs/07-heartbeat-investigation.md)** | Official heartbeat command, online state, and sleep-prevention verification |
+| **[08 · Mac Fn](docs/08-mac-fn.md)** | Fn mechanism, legacy Python implementation record, and verification limits |
+| **[09 · Native macOS App](docs/09-native-macos.md)** | Current entry point: Swift build, menu bar, permissions, and verification limits |
+| **[10 · Input Runtime](docs/10-input-runtime.md)** | Host-owned actions, double/long presses, persistence and migration |
 
 > English is the default: documentation files carry no language suffix. Chinese is an opt-in alternative suffixed with `.zh.md`. Both versions are kept in strict structural sync — editing one requires updating the other.
 
 ---
 
-## Data flow
+## Original reverse-engineering tool data flow
 
 ```
                     ┌──────────────────────────────────┐
@@ -147,8 +192,7 @@ The complete phase-1 analysis is in [docs/01-ulanzi-studio-scope.md](docs/01-ula
                     ↑ completely bypasses Ulanzi Studio
 ```
 
-> **Note**: once Studio exits, the vendor channel carries **only heartbeats**, no `deviceKeyEvent` at all.
-> Keys keep working over standard HID — which is why reading keys never has to touch the private protocol.
+> **Scope update**: the diagram and early standard-HID capture describe the historical state without Studio's dedicated heartbeat. On 2026-09-21, Olanzi heartbeats switched keys to vendor `8b 10` events, and stopping them restored direct Enter output; ordinary keys also need host forwarding. The old Hooks query is not this heartbeat, and sleep-prevention causality still requires independent testing. See [07 · Heartbeat Investigation](docs/07-heartbeat-investigation.md).
 
 ---
 
@@ -158,15 +202,26 @@ The complete phase-1 analysis is in [docs/01-ulanzi-studio-scope.md](docs/01-ula
 olanzi/
 ├── AGENTS.md                    ← project memory (conventions / invariants / safety)
 ├── README.md / README.zh.md     ← you are here (en / zh)
-├── vibekey.py                   ← terminal tool (zero dependencies, 1060 lines)
+├── native/
+│   ├── Package.swift           ← macOS 14+, Swift 6 toolchain / Swift 5 language mode
+│   ├── Sources/OlanziCore/     ← TEA, IOKit, CoreGraphics, and background thread
+│   ├── Sources/OlanziApp/      ← SwiftUI interface and AppKit menu bar
+│   └── Tests/                  ← native core tests
+├── vibekey.py                  ← reverse-engineering terminal tool (zero third-party dependencies)
+├── olanzi*.py / web/ / tests/   ← retained legacy Python/browser prototype and tests
 ├── tools/
-│   └── check_docs.py            ← bilingual documentation consistency check
+│   ├── build-macos.sh          ← builds build/Olanzi.app
+│   └── check_docs.py           ← bilingual documentation consistency check
 └── docs/
     ├── 01-ulanzi-studio-scope.md   (+ .zh.md)
     ├── 02-vibekey-protocol.md      (+ .zh.md)
     ├── 03-tool-manual.md           (+ .zh.md)
     ├── 04-methodology.md           (+ .zh.md)
     ├── 05-verification-log.md      (+ .zh.md)
+    ├── 06-local-workspace.md       (+ .zh.md)
+    ├── 07-heartbeat-investigation.md (+ .zh.md)
+    ├── 08-mac-fn.md                (+ .zh.md)
+    ├── 09-native-macos.md          (+ .zh.md)
     └── evidence/
         └── 2026-09-21-key-reprogram.log
 ```
@@ -180,8 +235,9 @@ and counts as an **intermediate artifact** — it is not in this repository.
 
 | Item | Version |
 |---|---|
-| OS | macOS (Apple Silicon) |
-| Python | 3.x (standard library only) |
+| Native app OS | macOS 14 or later |
+| Native toolchain | Swift 6 (Swift 5 language mode) |
+| Legacy research tools | Python 3.x (standard library only; not required by the main app) |
 | Firmware under test | Ulanzi Studio **3.3.9** / Vibe Key firmware **4.4.2** |
 | Verification date | 2026-09-21 |
 
@@ -195,9 +251,10 @@ and counts as an **intermediate artifact** — it is not in this repository.
 - [x] **Phase 2** — Decrypt the private protocol (TEA + 85 commands + control mapping)
 - [x] **Phase 3** — Terminal tool for reading keys (works without Studio)
 - [x] **Phase 4** — Read and write the device's programmable key table (**remapping**)
-- [ ] **Phase 5** — Drive the indicator light (AI state lighting effects)
-- [ ] **Phase 6** — The replacement client itself (key → script / Ollama / window switching)
-- [ ] To be verified — key combinations (`num > 1`), `type=0x03` (system / multimedia)
+- [x] **Phase 5** — Python local workspace prototype (retained as a research reference)
+- [x] **Phase 6** — Native Swift menu-bar app (keymap interface, background heartbeats, Fn assignments)
+- [ ] **Next** — Extend lighting, automation, and other Studio capabilities as their protocols are verified
+- [ ] To be verified — on-device key-table combinations (`num > 1`), `type=0x03` (system / multimedia)
 
 ---
 

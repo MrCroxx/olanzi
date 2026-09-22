@@ -1,0 +1,50 @@
+AU05 vendor key routing verification — 2026-09-21
+
+User-operated A/B observations:
+- Heartbeat on, standard Fn input interface open: Enter and Fn do not work; no standard input callbacks.
+- Heartbeat on, standard Fn input interface closed: Enter still does not work; vendor events arrive.
+- Heartbeat off, vendor interface and online queries remain open: Enter works again.
+
+Six-control capture order: top, middle, bottom, knob press, clockwise tick, counterclockwise tick.
+Only the first eight decrypted key-event bytes are recorded; no device identifiers.
+frame[2] = logical action; frame[3] = down/up; frame[4] = AU05 physical control index.
+The four push controls emit down/up. Rotation emits down only and requires a host-generated release.
+
+2026-09-21 17:28:35.525 I  Olanzi[23940:ac315d] [com.mrcroxx.olanzi:device-input] AU05 厂商帧头：8b 10 6f 01 00 00 00 00
+2026-09-21 17:28:35.908 I  Olanzi[23940:ac315d] [com.mrcroxx.olanzi:device-input] AU05 厂商帧头：8b 10 6f 00 00 00 00 00
+2026-09-21 17:28:36.370 I  Olanzi[23940:ac315d] [com.mrcroxx.olanzi:device-input] AU05 厂商帧头：8b 10 70 01 01 00 00 00
+2026-09-21 17:28:36.803 I  Olanzi[23940:ac315d] [com.mrcroxx.olanzi:device-input] AU05 厂商帧头：8b 10 70 00 01 00 00 00
+2026-09-21 17:28:37.344 I  Olanzi[23940:ac315d] [com.mrcroxx.olanzi:device-input] AU05 厂商帧头：8b 10 71 01 02 00 00 00
+2026-09-21 17:28:37.725 I  Olanzi[23940:ac315d] [com.mrcroxx.olanzi:device-input] AU05 厂商帧头：8b 10 71 00 02 00 00 00
+2026-09-21 17:28:38.428 I  Olanzi[23940:ac315d] [com.mrcroxx.olanzi:device-input] AU05 厂商帧头：8b 10 6e 01 03 00 00 00
+2026-09-21 17:28:38.687 I  Olanzi[23940:ac315d] [com.mrcroxx.olanzi:device-input] AU05 厂商帧头：8b 10 6e 00 03 00 00 00
+2026-09-21 17:28:40.941 I  Olanzi[23940:ac315d] [com.mrcroxx.olanzi:device-input] AU05 厂商帧头：8b 10 72 01 04 00 00 00
+2026-09-21 17:28:42.301 I  Olanzi[23940:ac315d] [com.mrcroxx.olanzi:device-input] AU05 厂商帧头：8b 10 73 01 05 00 00 00
+
+After vendor bridge fix: user confirmed Enter and Doubao Fn work.
+The captured Fn release clears mask 0x800000 (545259520 -> 536870912).
+Only AU05-generated event metadata is retained.
+2026-09-21 17:31:22.331 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=true
+2026-09-21 17:31:22.335 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:emitter] type=10 keycode=36 flags=536870912
+2026-09-21 17:31:22.398 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=false
+2026-09-21 17:31:22.398 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:emitter] type=11 keycode=36 flags=536870912
+2026-09-21 17:31:22.487 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=true
+2026-09-21 17:31:22.487 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:emitter] type=10 keycode=36 flags=536870912
+2026-09-21 17:31:22.612 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=false
+2026-09-21 17:31:22.612 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:emitter] type=11 keycode=36 flags=536870912
+2026-09-21 17:31:22.675 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=true
+2026-09-21 17:31:22.676 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:emitter] type=10 keycode=36 flags=536870912
+2026-09-21 17:31:22.741 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=false
+2026-09-21 17:31:22.741 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:emitter] type=11 keycode=36 flags=536870912
+2026-09-21 17:31:22.806 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=true
+2026-09-21 17:31:22.807 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:emitter] type=10 keycode=36 flags=536870912
+2026-09-21 17:31:22.872 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=false
+2026-09-21 17:31:22.872 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:emitter] type=11 keycode=36 flags=536870912
+2026-09-21 17:31:23.000 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=true
+2026-09-21 17:31:23.000 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:emitter] type=10 keycode=36 flags=536870912
+2026-09-21 17:31:23.062 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=false
+2026-09-21 17:31:23.062 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:emitter] type=11 keycode=36 flags=536870912
+2026-09-21 17:31:24.285 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=0，按下=true
+2026-09-21 17:31:24.285 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:emitter] type=12 keycode=63 flags=545259520
+2026-09-21 17:31:25.616 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=0，按下=false
+2026-09-21 17:31:25.616 I  Olanzi[28162:ac9e97] [com.mrcroxx.olanzi:emitter] type=12 keycode=63 flags=536870912

@@ -4,7 +4,7 @@
 > 记录**怎么逆出来的**，让整个过程可复现、可审计。
 > 结论本身在 [02-vibekey-protocol.md](02-vibekey-protocol.zh.md)，这里讲过程。
 >
-> 📚 文档集：[README](../README.zh.md) · [01 职责边界](01-ulanzi-studio-scope.zh.md) · [02 协议](02-vibekey-protocol.zh.md) · [03 工具手册](03-tool-manual.zh.md) · [04 逆向方法论](04-methodology.zh.md) · [05 验证记录](05-verification-log.zh.md)
+> 📚 文档集：[README](../README.zh.md) · [01 职责边界](01-ulanzi-studio-scope.zh.md) · [02 协议](02-vibekey-protocol.zh.md) · [03 工具手册](03-tool-manual.zh.md) · [04 逆向方法论](04-methodology.zh.md) · [05 验证记录](05-verification-log.zh.md) · [10 输入运行时](10-input-runtime.zh.md)
 
 ---
 

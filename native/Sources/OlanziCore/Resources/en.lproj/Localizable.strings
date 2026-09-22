@@ -69,7 +69,7 @@
 "后台已暂停" = "Background Service Paused";
 "后台运行中 · %@" = "Running in Background · %@";
 "后台运行中" = "Running in Background";
-"在系统设置中开启 Olanzi。\n每秒自动检测，权限就绪后会自动进入。" = "Enable Olanzi in System Settings.\nPermissions are checked every second. The workspace opens when they are ready.";
+"在系统设置中开启 Olanzi，授权后自动进入。" = "Enable Olanzi in System Settings to continue.";
 "复制" = "Copy";
 "复杂配置" = "Complex Mapping";
 "如果其他工具占用设备，请先退出 Ulanzi Studio 或抓包程序。" = "If another tool is using the device, quit Ulanzi Studio or the capture tool first.";
@@ -295,7 +295,7 @@
 "使用此功能" = "Use Action";
 "按顺序执行；每个手势触发一次。最多 32 步。" = "Run in order, once per gesture. Up to 32 steps.";
 "填入 Codex 聚焦宏" = "Fill Codex Focus Macro";
-"添加 APP、组合键或等待步骤，组成你的宏。" = "Add apps, shortcuts, or delays to build your macro.";
+"暂无步骤" = "No steps yet";
 "添加 APP" = "Add App";
 "添加组合键" = "Add Shortcut";
 "添加等待" = "Add Delay";
@@ -307,7 +307,6 @@
 "下移" = "Move Down";
 "删除步骤" = "Delete Step";
 "选择按键" = "Choose Key";
-"也可录制完整组合键。" = "Or record the full shortcut.";
 "尚未选择 APP" = "No app selected";
 "选择 APP…" = "Choose App…";
 "选择 APP" = "Choose App";
@@ -334,12 +333,11 @@
 "QMK 官方宏文档" = "Official QMK Macro Documentation";
 
 "按键分类：%@" = "Key Category: %@";
-"点击键帽分配给选中的动作；点击铅笔编辑。" = "Click a keycap to assign it; use the pencil to edit.";
 "新建宏" = "New Macro";
 "编辑宏" = "Edit Macro";
 "编辑 APP" = "Edit App";
-"先录制一个宏，再像普通按键一样分配。" = "Record a macro, then assign it like any other key.";
-"添加常用 APP，之后点击键帽即可分配。" = "Add your apps, then click their keycaps to assign them.";
+"暂无宏" = "No macros yet";
+"暂无 APP" = "No apps yet";
 "当前动作尚未加入动作库。" = "The current action is not in the library yet.";
 "从当前动作创建" = "Create from Current Action";
 "%d 个绑定" = "%d assignments";
@@ -408,8 +406,8 @@
 "空闲后停止保活" = "Stop keepalive after idle";
 "永不" = "Never";
 "%d 分钟" = "%d minutes";
-"按 Vibe Key 的按键和旋钮操作计算空闲时间，按住期间不会超时。设置立即生效并保存在本机。" = "Idle time is based on Vibe Key button and knob activity. Held buttons prevent timeout. Changes apply immediately and are saved on this Mac.";
-"停止保活后，本机 Layer、手势和宏暂停，设备可能恢复自身键位。可点“恢复保活”，或等待设备重新唤醒后恢复。" = "When keepalive stops, local layers, gestures and macros pause, and the device may return to its own key mappings. Click Resume keepalive or wait for the device to go offline and come back online.";
+"按 Vibe Key 的按键和旋钮操作计算空闲时间，按住期间不会超时。" = "Idle time is based on Vibe Key button and knob activity. Held buttons prevent timeout.";
+"停止保活会暂停 Layer、手势和宏，设备可能恢复自身键位。" = "Stopping keepalive pauses layers, gestures, and macros. The device may return to its own key mappings.";
 "因空闲已停止保活" = "Keepalive stopped due to inactivity";
 "恢复保活" = "Resume keepalive";
 "有按住的按键时，松开后恢复。" = "Release any held buttons to resume.";

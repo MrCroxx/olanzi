@@ -95,7 +95,7 @@ struct ContentView: View {
                     Text(error).font(.callout).foregroundStyle(Palette.accent)
                         .multilineTextAlignment(.center)
                 }
-                Text(model.l("在系统设置中开启 Olanzi。\n每秒自动检测，权限就绪后会自动进入。"))
+                Text(model.l("在系统设置中开启 Olanzi，授权后自动进入。"))
                     .font(.callout).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center).lineSpacing(4)
                 HStack(spacing: 6) {
@@ -240,9 +240,8 @@ struct ContentView: View {
                         .accessibilityAddTraits(model.selectedLayer == id ? .isSelected : [])
                 }
             }.padding(4).background(Palette.surface, in: RoundedRectangle(cornerRadius: 8))
+                .help(model.l("编辑层仅用于预览；保存后按住 MO 键切层。"))
             Spacer()
-            Text(model.l("编辑层仅用于预览；保存后按住 MO 键切层。"))
-                .font(.caption).foregroundStyle(.secondary)
         }.buttonStyle(OlanziButtonStyle())
     }
     private var hardware: some View {
@@ -423,6 +422,7 @@ struct ContentView: View {
                         Text(model.l("长按切层达到设定时间后启用，松开恢复；不会补发单击动作。"))
                     }
                     Text(model.l("带叉圆角正方形表示不执行动作；双击和长按设为空时不参与手势判定。倒三角表示继承较低活动层的当前动作。"))
+                    Text(model.l("未配置的控件继承底层；多个层同时启用时，编号较大的层优先。"))
                     if let hint = model.fnBehaviorHint { Text(hint).foregroundStyle(Palette.accent) }
                 }.font(.body).padding(24).frame(width: 360)
             }
@@ -576,10 +576,9 @@ struct ContentView: View {
                         }
                     }.frame(width: 290)
                     .accessibilityLabel(model.l("空闲后停止保活"))
+                    .help(model.l("按 Vibe Key 的按键和旋钮操作计算空闲时间，按住期间不会超时。"))
                 }
-                Text(model.l("按 Vibe Key 的按键和旋钮操作计算空闲时间，按住期间不会超时。设置立即生效并保存在本机。"))
-                    .font(.callout).foregroundStyle(.secondary)
-                Text(model.l("停止保活后，本机 Layer、手势和宏暂停，设备可能恢复自身键位。可点“恢复保活”，或等待设备重新唤醒后恢复。"))
+                Text(model.l("停止保活会暂停 Layer、手势和宏，设备可能恢复自身键位。"))
                     .font(.callout).foregroundStyle(.secondary)
                 if model.device.heartbeatPausedForInactivity {
                     HStack {

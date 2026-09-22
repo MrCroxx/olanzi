@@ -27,7 +27,7 @@ final class HostKeymapTests: XCTestCase {
             XCTAssertThrowsError(try map.validate())
         }
         var map = try keymap()
-        map.version = 2
+        map.version = 99
         XCTAssertThrowsError(try map.validate())
     }
 

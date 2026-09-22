@@ -4,6 +4,7 @@ import Foundation
 enum GestureTransition: Equatable {
     case begin(index: Int, entries: [KeyEntry])
     case end(index: Int)
+    case execute(index: Int, action: HostAction)
 }
 
 /// 单调时间由调用者注入，不读取系统时钟、不访问设备、不发送事件。
@@ -16,6 +17,7 @@ struct GestureRouter {
         case completed
     }
     private var configuration: HostKeymap?
+    private var resolvedControls: [ControlActionMap] = []
     private var phases: [Int: Phase] = [:]
     private var physicalDown = Set<Int>()
     private var quarantined = Set<Int>()
@@ -25,6 +27,14 @@ struct GestureRouter {
         guard self.configuration != configuration else { return [] }
         let releases = cancel()
         self.configuration = configuration
+        // 只展开成功保存的配置副本；原配置保留引用，便于识别库内容更新并取消旧宏。
+        resolvedControls = configuration?.controls.map { control in
+            var resolved = control
+            resolved.pressAction = configuration?.resolve(control.effectivePress) ?? control.effectivePress
+            resolved.doublePressAction = configuration?.resolve(control.effectiveDoublePress) ?? control.effectiveDoublePress
+            resolved.longPressAction = configuration?.resolve(control.effectiveLongPress) ?? control.effectiveLongPress
+            return resolved
+        } ?? []
         return releases
     }
 
@@ -59,25 +69,30 @@ struct GestureRouter {
         guard let configuration else { return [] }
         var transitions: [GestureTransition] = []
         for index in phases.keys.sorted() {
-            guard let control = configuration.controls.first(where: { $0.index == index }) else { continue }
+            guard let control = resolvedControls.first(where: { $0.index == index }) else { continue }
             switch phases[index] {
             case .waiting(let deadline) where time >= deadline:
                 phases.removeValue(forKey: index)
-                transitions += pulse(index: index, entries: control.press)
+                transitions += pulse(index: index, action: control.effectivePress)
             case .pressing(let start, _) where time >= start + configuration.longPressThreshold:
-                if let action = control.longPress {
+                if let action = control.effectiveLongPress {
+                    guard case .keyboard(let entries) = action else {
+                        phases[index] = .completed
+                        transitions.append(.execute(index: index, action: action))
+                        continue
+                    }
                     switch control.longPressBehavior {
                     case .tap:
                         // 已完成的长按仍等待物理松开，重复报文和后续时钟不能重触发。
                         phases[index] = .completed
-                        transitions += pulse(index: index, entries: action)
+                        transitions += pulse(index: index, action: action)
                     case .hold:
                         phases[index] = .holding
-                        transitions.append(.begin(index: index, entries: action))
+                        transitions.append(.begin(index: index, entries: entries))
                     case .burst:
                         phases[index] = .burst(down: true, remaining: control.longPressTapCount - 1,
                                                deadline: time + 0.04)
-                        transitions.append(.begin(index: index, entries: action))
+                        transitions.append(.begin(index: index, entries: entries))
                     }
                 }
             case .burst(let down, let remaining, let deadline) where time >= deadline:
@@ -90,7 +105,7 @@ struct GestureRouter {
                     } else {
                         phases[index] = .burst(down: false, remaining: remaining, deadline: time + 0.08)
                     }
-                } else if let action = control.longPress {
+                } else if case .keyboard(let action) = control.effectiveLongPress {
                     phases[index] = .burst(down: true, remaining: remaining - 1, deadline: time + 0.04)
                     transitions.append(.begin(index: index, entries: action))
                 }
@@ -105,9 +120,9 @@ struct GestureRouter {
         var transitions = advance(to: now)
         let time = lastTime
         guard let configuration,
-              let control = configuration.controls.first(where: { $0.index == event.index }) else { return transitions }
+              let control = resolvedControls.first(where: { $0.index == event.index }) else { return transitions }
         if event.index >= 4 {
-            if event.pressed { transitions += pulse(index: event.index, entries: control.press) }
+            if event.pressed { transitions += pulse(index: event.index, action: control.effectivePress) }
             return transitions
         }
         if event.pressed {
@@ -115,9 +130,14 @@ struct GestureRouter {
             guard !quarantined.contains(event.index) else { return transitions }
             // 连按期间的新物理按下只更新按住状态，不另开一组或覆盖队列。
             if case .burst = phases[event.index] { return transitions }
-            if control.doublePress == nil && control.longPress == nil {
-                phases[event.index] = .holding
-                transitions.append(.begin(index: event.index, entries: control.press))
+            if control.effectiveDoublePress == nil && control.effectiveLongPress == nil {
+                if case .keyboard(let entries) = control.effectivePress {
+                    phases[event.index] = .holding
+                    transitions.append(.begin(index: event.index, entries: entries))
+                } else {
+                    phases[event.index] = .completed
+                    transitions.append(.execute(index: event.index, action: control.effectivePress))
+                }
             } else {
                 let second: Bool
                 if case .waiting = phases[event.index] { second = true } else { second = false }
@@ -134,15 +154,15 @@ struct GestureRouter {
             case .completed:
                 phases.removeValue(forKey: event.index)
             case .pressing(_, let second):
-                if second, let action = control.doublePress {
+                if second, let action = control.effectiveDoublePress {
                     // 第二次长按已由 advance 转入 holding 或 completed，不会再补双击或单击。
                     phases.removeValue(forKey: event.index)
-                    transitions += pulse(index: event.index, entries: action)
-                } else if control.doublePress != nil {
+                    transitions += pulse(index: event.index, action: action)
+                } else if control.effectiveDoublePress != nil {
                     phases[event.index] = .waiting(deadline: time + configuration.doublePressWindow)
                 } else {
                     phases.removeValue(forKey: event.index)
-                    transitions += pulse(index: event.index, entries: control.press)
+                    transitions += pulse(index: event.index, action: control.effectivePress)
                 }
             default: break
             }
@@ -150,8 +170,11 @@ struct GestureRouter {
         return transitions
     }
 
-    private func pulse(index: Int, entries: [KeyEntry]) -> [GestureTransition] {
-        [.begin(index: index, entries: entries), .end(index: index)]
+    private func pulse(index: Int, action: HostAction) -> [GestureTransition] {
+        if case .keyboard(let entries) = action {
+            return [.begin(index: index, entries: entries), .end(index: index)]
+        }
+        return [.execute(index: index, action: action)]
     }
 
     private mutating func monotonic(_ now: TimeInterval) -> TimeInterval {

@@ -60,7 +60,7 @@
 "发送设备报文失败" = "Could not send the device report";
 "取消" = "Cancel";
 "只能修改设备上的六个控件。" = "Only the six device controls can be changed.";
-"只设置单击时，按下立即生效，松开释放。" = "With only a single press assigned, the action starts immediately and ends when you release the key.";
+"只设置单击且选择保持按住时，按下立即生效，松开释放。" = "With only a single press assigned in Hold mode, the action starts immediately and ends when you release the key.";
 "右 Command" = "Right Command";
 "右 Control" = "Right Control";
 "右 Option" = "Right Option";
@@ -150,7 +150,7 @@
 "未找到 Vibe Key，请插入 USB 接收器。" = "Vibe Key was not found. Connect its USB receiver.";
 "未知控件" = "Unknown Control";
 "未设置" = "Not set";
-"未设置的手势不参与判定。“未分配”则保留手势，但不执行动作。" = "Unset gestures are ignored. “Unassigned” keeps the gesture enabled without performing an action.";
+"带叉圆角正方形表示不执行动作；双击和长按设为空时不参与手势判定。倒三角表示继承较低活动层的当前动作。" = "The rounded square with an X means no action; empty double and long presses are ignored during gesture recognition. The downward triangle inherits the current gesture from lower active layers.";
 "本机动作配置未更改：" = "The local action configuration was not changed: ";
 "本机动作配置读取失败，已保留原文件且停止动作执行：" = "Could not read the local action configuration. The original file was preserved and actions were stopped: ";
 "本机配置尚未就绪。" = "The local configuration is not ready.";
@@ -374,3 +374,50 @@
 "两次按键的间隔超过 10 秒，录制已停止；已完成的步骤已保留。" = "The gap between keys exceeded 10 seconds. Recording stopped and completed steps were kept.";
 "宏最多包含 32 个步骤，剩余空间不足以记录下一组按键和间隔。" = "The 32-step limit leaves insufficient space for the next shortcut and delay.";
 "已达到 32 个步骤，录制已停止。" = "The 32-step limit was reached. Recording stopped.";
+
+"编辑层仅用于预览；保存后按住 MO 键切层。" = "Editing previews a layer. Save, then hold MO to activate it.";
+"继承底层" = "Inherited";
+"恢复继承" = "Inherit Again";
+"按住切换 Layer" = "Momentary Layer";
+"MO(n)：分配给单击时按下立即切层；分配给长按时达到长按时间后切层，松开恢复。" = "MO(n) switches layers immediately as a primary action, or after the long-press threshold as a long-press action. Release to restore.";
+"单击切层可同时设置长按动作；分配单击切层时仅清除双击。" = "A primary layer action can coexist with a long-press action. Assigning a primary layer action only clears double press.";
+"按住切换到 Layer %d" = "Hold to Activate Layer %d";
+"未配置的控件继承底层；多个层同时启用时，编号较大的层优先。" = "Unconfigured controls inherit lower active layers. Higher layer numbers take priority.";
+"切层动作只能分配给按键或旋钮按下的单击或长按。" = "Momentary layers can use the primary or long-press action of a key or knob press.";
+"Layer 编号必须为 1–3 且不能重复，每层控件索引必须唯一且在 0–5 之间。" = "Layer IDs must be unique and within 1–3. Each layer must have unique control indices within 0–5.";
+"切层动作仅支持按键或旋钮按下的单击和长按，目标层必须为 1–3；单击切层时不能同时设置双击。" = "Layer actions require a key or knob primary or long-press action with a target within 1–3. A primary layer action cannot coexist with double press.";
+"字符" = "Characters";
+"单击切层在按下时立即生效；长按动作达到设定时间后执行，松开时退出切层。" = "A primary layer action activates immediately. The long-press action runs at its threshold, and releasing exits the layer.";
+"长按切层达到设定时间后启用，松开恢复；不会补发单击动作。" = "A long-press layer activates at its threshold and restores on release, without firing the primary action afterward.";
+"按键输出" = "Key Output";
+"只设置单击时跟随物理按住；另有双击或长按时，在单击判定后短按一次。" = "With only a primary action, hold until physical release. With double or long press configured, tap once after recognizing a single press.";
+"手势判定后短按一次；次数与单击、双击、长按的触发方式独立。" = "Tap once after recognizing the gesture. Output count is independent of single, double, or long press.";
+"手势判定后连按 %d 次；松开后仍完成本组，次数只影响当前动作。" = "Tap %d times after recognizing the gesture. The group finishes after release; the count applies only to this action.";
+"手势判定后短按一次 Fn，继续按住不会重复触发。" = "Tap Fn once after recognizing the gesture. Continuing to hold does not retrigger it.";
+"手势判定后连按 Fn %d 次；松开后仍完成本组。" = "Tap Fn %d times after recognizing the gesture. The group finishes after physical release.";
+"单击和双击的连按次数应为 2–20 次。" = "Single- and double-press repeat counts must be 2–20.";
+"双击动作不能保持按住，请选择按一次或连按。" = "A double-press action cannot hold a key; choose a single tap or repeat.";
+"继承较低活动层的动作。" = "Inherit the action from lower active layers.";
+"单击、双击和长按决定何时触发；每个动作的按键输出可独立设置为保持按住、短按一次或连按指定次数。" = "Single, double, and long press determine when an action triggers. Each keyboard action has independent hold, single-tap, or repeat output settings.";
+"基础层不能继承其他层的动作。" = "The base layer cannot inherit actions from another layer.";
+"继承较低活动层的当前动作。" = "Inherit this gesture and its output settings from lower active layers.";
+"继承当前动作" = "Inherit Current Action";
+"当前动作不执行；双击和长按设为空时不参与手势判定。" = "Do nothing for this action. Empty double- and long-press actions do not participate in gesture recognition.";
+
+"保活" = "Keepalive";
+"空闲后停止保活" = "Stop keepalive after idle";
+"永不" = "Never";
+"%d 分钟" = "%d minutes";
+"按 Vibe Key 的按键和旋钮操作计算空闲时间，按住期间不会超时。设置立即生效并保存在本机。" = "Idle time is based on Vibe Key button and knob activity. Held buttons prevent timeout. Changes apply immediately and are saved on this Mac.";
+"停止保活后，本机 Layer、手势和宏暂停，设备可能恢复自身键位。可点“恢复保活”，或等待设备重新唤醒后恢复。" = "When keepalive stops, local layers, gestures and macros pause, and the device may return to its own key mappings. Click Resume keepalive or wait for the device to go offline and come back online.";
+"因空闲已停止保活" = "Keepalive stopped due to inactivity";
+"恢复保活" = "Resume keepalive";
+"有按住的按键时，松开后恢复。" = "Release any held buttons to resume.";
+
+"保活已暂停" = "Keepalive paused";
+
+"请按下组合键…" = "Press a key combination…";
+
+"录制中" = "Recording";
+
+"尚未录制" = "Not recorded";

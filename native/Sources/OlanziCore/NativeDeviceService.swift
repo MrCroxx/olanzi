@@ -5,6 +5,7 @@ public final class NativeDeviceService: @unchecked Sendable {
     private enum Job {
         case connect, disconnect, refresh, apply([KeyChange], [KeyBinding])
         case permissions, checkPermissions
+        case heartbeatIdleTimeout(TimeInterval?), resumeHeartbeat
         case applyHostKeymap(HostKeymap, UUID)
         case suspendForSleep, resumeAfterWake(UInt64)
         case stop(@Sendable () -> Void)
@@ -25,6 +26,9 @@ public final class NativeDeviceService: @unchecked Sendable {
     private let loadHostKeymap: () throws -> HostKeymap?
     private let saveHostKeymap: (HostKeymap) throws -> Void
     private let batteryClock: () -> TimeInterval
+    private let idleClock: () -> TimeInterval
+    private var heartbeatIdleTimer = HeartbeatIdleTimer()
+    private var heartbeatResumeRequested = false
     private enum ConfigurationState { case notLoaded, missing, ready, invalidFile }
     private var configurationState = ConfigurationState.notLoaded
     private var hostConfigurationError: String?
@@ -37,14 +41,15 @@ public final class NativeDeviceService: @unchecked Sendable {
     private var wantsConnection = true
     private var nextConnect: TimeInterval = 0
     private var nextCheck: TimeInterval = 0
+    private var lastConfirmedOnline: Bool?
     private var nextBatteryCheck: TimeInterval = 0
 
-    public convenience init(demo: Bool = false,
+    public convenience init(demo: Bool = false, heartbeatIdleTimeout: TimeInterval? = nil,
                             onChange: @escaping @Sendable (DeviceSnapshot) -> Void) {
         self.init(demo: demo, transportFactory: {
             if demo { return DemoHIDTransport() }
             return MacHIDTransport()
-        }, onChange: onChange)
+        }, heartbeatIdleTimeout: heartbeatIdleTimeout, onChange: onChange)
     }
 
     init(demo: Bool, transportFactory: @escaping () -> DeviceTransport,
@@ -52,6 +57,8 @@ public final class NativeDeviceService: @unchecked Sendable {
          saveHostKeymap: @escaping (HostKeymap) throws -> Void = { try HostKeymapStore().save($0) },
          bridgeFactory: @escaping () -> VendorKeyBridge = { VendorKeyBridge() },
          batteryClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+         heartbeatIdleTimeout: TimeInterval? = nil,
+         idleClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          onChange: @escaping @Sendable (DeviceSnapshot) -> Void) {
         self.demo = demo
         self.transportFactory = transportFactory
@@ -59,6 +66,8 @@ public final class NativeDeviceService: @unchecked Sendable {
         self.saveHostKeymap = saveHostKeymap
         self.bridgeFactory = bridgeFactory
         self.batteryClock = batteryClock
+        self.idleClock = idleClock
+        heartbeatIdleTimer.configure(timeout: heartbeatIdleTimeout, at: idleClock())
         self.onChange = onChange
     }
 
@@ -109,6 +118,8 @@ public final class NativeDeviceService: @unchecked Sendable {
         condition.signal()
     }
 
+    public func setHeartbeatIdleTimeout(_ timeout: TimeInterval?) { enqueue(.heartbeatIdleTimeout(timeout)) }
+    public func resumeHeartbeat() { enqueue(.resumeHeartbeat) }
     public func connect() { enqueue(.connect) }
     public func disconnect() { enqueue(.disconnect) }
     public func refresh() { enqueue(.refresh) }
@@ -170,6 +181,11 @@ public final class NativeDeviceService: @unchecked Sendable {
             case .connect:
                 wantsConnection = true
                 if !isInputSuspended { try connectDevice() }
+            case .heartbeatIdleTimeout(let timeout):
+                heartbeatIdleTimer.configure(timeout: timeout, at: idleClock())
+                requestHeartbeatResume()
+            case .resumeHeartbeat:
+                requestHeartbeatResume()
             case .disconnect:
                 wantsConnection = false
                 disconnectDevice()
@@ -250,6 +266,7 @@ public final class NativeDeviceService: @unchecked Sendable {
         if !state.connected {
             try transport.open()
             state.connected = true
+            resetHeartbeatIdleTimer()
             nextBatteryCheck = 0
             if !demo && backgroundActivity == nil {
                 // 防止隐藏窗口后的 App Nap 延后心跳与输入处理，但允许 Mac 正常睡眠。
@@ -266,10 +283,15 @@ public final class NativeDeviceService: @unchecked Sendable {
 
     private func checkOnline() throws {
         let wasOnline = state.online
+        let wasConfirmedOnline = lastConfirmedOnline
         // 查询中的回调继续使用上一次已确认状态，不能每两秒取消一次按住动作。
         do { state.online = try transport?.queryOnline() }
         catch { state.online = nil; throw error }
+        lastConfirmedOnline = state.online
+        if state.online == true && wasConfirmedOnline == false { resetHeartbeatIdleTimer() }
         if state.online == false {
+            // 离线清掉可能丢失 up 的物理按住状态，但保持空闲暂停原因。
+            heartbeatIdleTimer.reset(at: idleClock())
             clearBattery()
             state.error = "接收器已连接，但 Vibe Key 本体离线，请短按电源键唤醒。"
         } else if state.online == true && (wasOnline != true || state.keys.isEmpty) {
@@ -370,33 +392,65 @@ public final class NativeDeviceService: @unchecked Sendable {
         }
         state.connected = false
         state.online = nil
+        lastConfirmedOnline = nil
         state.keys = []
         clearBattery()
         nextBatteryCheck = 0
         state.lastRead = nil
         state.lastHeartbeat = nil
         state.heartbeatEnabled = false
+        resetHeartbeatIdleTimer()
         state.error = nil
     }
 
     private func synchronizeFn() {
         // 运行时只使用成功持久化的本机动作；设备回读始终与本机配置独立。
-        let enabled = state.connected && !isInputSuspended && state.hostKeymap != nil
+        checkHeartbeatIdleTimeout()
+        let enabled = state.connected && !isInputSuspended && !state.heartbeatPausedForInactivity && state.hostKeymap != nil
         guard let bridge = bridge else {
             state.fn = FnStatus(enabled: enabled)
             updateHeartbeat()
             return
         }
         bridge.synchronize(configuration: state.hostKeymap, connected: state.connected && !isInputSuspended,
-                           online: state.online)
+                           online: state.heartbeatPausedForInactivity ? nil : state.online)
         bridge.pump()
         state.fn = bridge.status
         updateHeartbeat()
     }
 
+    private func requestHeartbeatResume() {
+        heartbeatResumeRequested = true
+        finishHeartbeatResumeIfReleased()
+    }
+
+    private func finishHeartbeatResumeIfReleased() {
+        guard heartbeatResumeRequested, !heartbeatIdleTimer.hasHeldControls else { return }
+        heartbeatIdleTimer.restart(at: idleClock())
+        heartbeatResumeRequested = false
+        state.heartbeatPausedForInactivity = false
+    }
+
+    private func resetHeartbeatIdleTimer() {
+        heartbeatResumeRequested = false
+        heartbeatIdleTimer.reset(at: idleClock())
+        state.heartbeatPausedForInactivity = false
+    }
+
+    private func checkHeartbeatIdleTimeout() {
+        guard state.connected, state.online == true, !isInputSuspended,
+              !state.heartbeatPausedForInactivity, heartbeatIdleTimer.expired(at: idleClock()) else { return }
+        state.heartbeatPausedForInactivity = true
+        // 先停心跳和主机动作；保留物理按住隔离，恢复时不能重放暂停期间的 down。
+        transport?.heartbeatEnabled = false
+        bridge?.synchronize(configuration: state.hostKeymap, connected: true, online: nil)
+        state.fn = bridge?.status ?? FnStatus()
+    }
+
     private func updateHeartbeat() {
+        checkHeartbeatIdleTimeout()
         let ready = demo ? state.hostKeymap != nil && state.online == true : bridge?.status.active == true
-        let enabled = state.connected && !isInputSuspended && ready
+        let enabled = state.connected && !isInputSuspended && !state.heartbeatPausedForInactivity && ready
         transport?.heartbeatEnabled = enabled
         state.heartbeatEnabled = enabled
         state.lastHeartbeat = enabled ? transport?.lastHeartbeat : nil
@@ -421,11 +475,21 @@ public final class NativeDeviceService: @unchecked Sendable {
             updateHeartbeat()
             return
         }
+        // 暂停后的首个厂商事件可能已由标准 HID 直出，不用它自动恢复或重放。
+        // 查询暂时失败时仍消费松开，避免恢复在线后残留 held 导致永不空闲。
+        if state.connected && (state.online == true || !event.pressed) {
+            heartbeatIdleTimer.receive(event, at: idleClock())
+        }
         bridge?.receive(event)
+        if heartbeatResumeRequested && !heartbeatIdleTimer.hasHeldControls {
+            finishHeartbeatResumeIfReleased()
+            synchronizeFn()
+        }
         updateHeartbeat()
     }
 
     private func pumpInput() {
+        checkHeartbeatIdleTimeout()
         if isInputSuspended {
             bridge?.synchronize(configuration: state.hostKeymap, connected: false, online: nil)
         } else {

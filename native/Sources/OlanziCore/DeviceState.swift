@@ -49,6 +49,7 @@ public struct DeviceSnapshot: Equatable, Sendable {
     public var hostKeymap: HostKeymap? = nil
     public var hostConfigurationMissing = false
     public var hostSaveResult: HostSaveResult? = nil
+    public var heartbeatPausedForInactivity = false
     public var heartbeatEnabled = false
     public var lastHeartbeat: Date? = nil
     public var lastRead: Date? = nil

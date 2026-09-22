@@ -131,15 +131,6 @@ struct ContentView: View {
     private var workspace: some View {
         VStack(spacing: 0) {
             header
-            if let notice = model.notice {
-                HStack {
-                    Image(systemName: "info.circle").foregroundStyle(Palette.accent)
-                    Text(notice).font(.callout)
-                    Spacer()
-                    Button { model.notice = nil } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.plain).accessibilityLabel(model.l("关闭提示"))
-                }.padding(.horizontal, 28).padding(.vertical, 12).background(Palette.surface)
-            }
             Divider().overlay(Color.white.opacity(0.06))
             GeometryReader { viewport in
                 ScrollView {
@@ -156,6 +147,37 @@ struct ContentView: View {
                 }
             }
             footer
+        }
+        .overlay(alignment: .top) {
+            if let notice = model.notice {
+                HStack(spacing: 9) {
+                    Image(systemName: model.noticeSymbol)
+                        .font(.system(size: 15, weight: .medium)).foregroundStyle(Palette.accent)
+                    Text(notice).font(.system(size: 13, weight: .medium))
+                        .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    Button { withAnimation(.easeOut(duration: 0.18)) { model.notice = nil } } label: {
+                        Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary).frame(width: 20, height: 20)
+                            .contentShape(Circle())
+                    }.buttonStyle(.plain).accessibilityLabel(model.l("关闭提示"))
+                }
+                .padding(.leading, 17).padding(.trailing, 12).padding(.vertical, 12)
+                // Capsule 的半径始终为高度的一半，左右是真正的半圆。
+                .background(Palette.raised, in: Capsule(style: .circular))
+                .overlay(Capsule(style: .circular).stroke(.white.opacity(0.12), lineWidth: 1))
+                .shadow(color: .black.opacity(0.24), radius: 12, x: 0, y: 5)
+                .frame(maxWidth: 560).padding(.horizontal, 24).padding(.top, 76)
+                .transition(.opacity.combined(with: .offset(y: -6)))
+                .accessibilityElement(children: .contain)
+            }
+        }
+        .task(id: model.noticeID) {
+            guard let id = model.noticeID, let message = model.notice else { return }
+            // 相同文案再次出现也从头计时；旧任务不能关闭后来出现的新提示。
+            do { try await Task.sleep(for: .seconds(message.count > 45 ? 7 : 3.5)) }
+            catch { return }
+            guard model.noticeID == id else { return }
+            withAnimation(.easeOut(duration: 0.18)) { model.notice = nil }
         }
     }
     private var header: some View {
@@ -176,8 +198,8 @@ struct ContentView: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
                 HStack(spacing: 7) {
-                    Circle().fill(model.online ? Color.green.opacity(0.8) : Color.gray).frame(width: 6, height: 6)
-                    Text(model.online ? model.l("已连接") : model.status).font(.system(size: 13)).help(model.status)
+                    Circle().fill(model.device.heartbeatPausedForInactivity ? Color.orange : model.online ? Color.green.opacity(0.8) : Color.gray).frame(width: 6, height: 6)
+                    Text(model.device.heartbeatPausedForInactivity ? model.l("保活已暂停") : model.online ? model.l("已连接") : model.status).font(.system(size: 13)).help(model.status)
                 }
                 Label(model.batteryText, systemImage: model.batterySymbol)
                     .font(.system(size: 14, weight: .medium).monospacedDigit())
@@ -192,11 +214,36 @@ struct ContentView: View {
         let scale = min(1.18, max(1, (availableHeight - 562) / 600 + 1), availableWidth / 702)
         let hardwareHeight = 218 * scale
         return VStack(alignment: .leading, spacing: 10) {
+            layerEditor
             hardware.scaleEffect(scale).frame(height: hardwareHeight)
             Divider()
             gestureEditor
-            ActionPalette(model: model, minimumHeight: max(280, availableHeight - hardwareHeight - 65))
+            ActionPalette(model: model, minimumHeight: max(280, availableHeight - hardwareHeight - 115))
         }
+    }
+    private var layerEditor: some View {
+        HStack(spacing: 12) {
+            Text("Layer").font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                ForEach(model.layerIDs, id: \.self) { id in
+                    Button { model.selectedLayer = id } label: {
+                        Text(String(id))
+                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                            .frame(width: 36, height: 30)
+                            .foregroundStyle(model.selectedLayer == id ? Palette.accent : Palette.text)
+                            .background(model.selectedLayer == id ? Palette.raised : .clear,
+                                        in: RoundedRectangle(cornerRadius: 5))
+                            .contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                        .disabled(!model.canEdit)
+                        .accessibilityLabel("Layer \(id)")
+                        .accessibilityAddTraits(model.selectedLayer == id ? .isSelected : [])
+                }
+            }.padding(4).background(Palette.surface, in: RoundedRectangle(cornerRadius: 8))
+            Spacer()
+            Text(model.l("编辑层仅用于预览；保存后按住 MO 键切层。"))
+                .font(.caption).foregroundStyle(.secondary)
+        }.buttonStyle(OlanziButtonStyle())
     }
     private var hardware: some View {
         HStack(alignment: .top, spacing: 22) {
@@ -271,7 +318,14 @@ struct ContentView: View {
                     VStack(spacing: 2) {
                         Text(model.gestureTitle(gesture)).font(.system(size: 12, weight: .medium))
                             .foregroundStyle(selected ? Palette.accent : Color.secondary)
-                        Text(title)
+                        Group {
+                            if model.isInherited(index, gesture: gesture) {
+                                Image(systemName: "arrowtriangle.down")
+                                    .font(.system(size: 12, weight: .medium))
+                            } else if model.isEmptyAction(index, gesture: gesture) {
+                                Image(systemName: "xmark.square").font(.system(size: 14, weight: .medium))
+                            } else { Text(title) }
+                        }
                             .font(.system(size: 13, weight: selected ? .semibold : .regular))
                             .foregroundStyle(selected ? Palette.accent : unset ? Color.secondary : Palette.text)
                             .lineLimit(2)
@@ -283,10 +337,10 @@ struct ContentView: View {
                     .background(selected ? Palette.raised : .clear, in: RoundedRectangle(cornerRadius: 6))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).disabled(!model.canEdit)
+                .buttonStyle(.plain).disabled(!model.canEdit || (gesture == .doublePress && model.isLayerSwitch(index)))
                 .help(gestureAssignmentHelp(index, gesture: gesture, title: model.label(index, gesture: gesture)))
                 .accessibilityLabel(model.controlName(index) + " · " + model.gestureTitle(gesture))
-                .accessibilityValue(model.label(index, gesture: gesture) + (selected ? model.l("，已选中") : ""))
+                .accessibilityValue((model.isInherited(index, gesture: gesture) ? model.l("继承底层") : model.label(index, gesture: gesture)) + (selected ? model.l("，已选中") : ""))
             }
         }
         .padding(4).frame(height: 54)
@@ -307,9 +361,10 @@ struct ContentView: View {
         return model.label(index, gesture: gesture)
     }
     private func gestureAssignmentHelp(_ index: Int, gesture: AssignmentGesture, title: String) -> String {
+        if model.isInherited(index, gesture: gesture) { return model.l("继承较低活动层的动作。") }
         var help = model.lf("%@ · %@：%@", model.controlName(index), model.gestureTitle(gesture), title)
-        if gesture == .longPress, model.entries(index, gesture: gesture) != nil {
-            help += " · " + model.longPressBehaviorLabel(index: index)
+        if model.entries(index, gesture: gesture) != nil {
+            help += " · " + model.actionBehaviorLabel(index: index, gesture: gesture)
         }
         return help
     }
@@ -319,14 +374,18 @@ struct ContentView: View {
                 if index == 4 { rotationIcon(symbol, selected: model.selected == index) }
                 VStack(alignment: index == 5 ? .trailing : .leading, spacing: 3) {
                     Text(model.l(title)).font(.system(size: 13, weight: .medium))
-                    Text(assignmentTitle(index)).font(.system(size: 12)).lineLimit(1)
+                    if model.isInherited(index) {
+                        Image(systemName: "arrowtriangle.down").font(.system(size: 11, weight: .medium))
+                    } else if model.isEmptyAction(index) {
+                        Image(systemName: "xmark.square").font(.system(size: 14, weight: .medium))
+                    } else { Text(assignmentTitle(index)).font(.system(size: 12)).lineLimit(1) }
                 }
                 if index == 5 { rotationIcon(symbol, selected: model.selected == index) }
             }
             .foregroundStyle(model.selected == index ? Palette.accent : Palette.text)
             .padding(.vertical, 4).contentShape(Rectangle())
         }.buttonStyle(.plain).disabled(!model.canEdit)
-            .help(model.controlName(index) + " · " + model.label(index))
+            .help(model.isInherited(index) ? model.l("继承较低活动层的动作。") : model.controlName(index) + " · " + model.label(index))
             .accessibilityLabel(model.l("旋钮" + title)).accessibilityValue(assignmentAccessibility(index))
             .anchorPreference(key: KnobAnchorKey.self, value: .bounds) { [index: $0] }
     }
@@ -343,13 +402,8 @@ struct ContentView: View {
             Text(model.selected < 4 ? model.gestureTitle(model.gesture) : model.l("转动"))
                 .font(.system(size: 16)).foregroundStyle(Palette.accent)
             Spacer()
-            if model.gesture == .longPress && model.selected < 4 && model.entries(model.selected, gesture: .longPress) != nil {
-                longPressOptions
-            }
-            if model.gesture != .press && model.selected < 4 {
-                Button { model.disableGesture() } label: {
-                    Label(model.l("清除动作"), systemImage: "xmark")
-                }.disabled(!model.canEdit || model.action(model.selected, gesture: model.gesture) == nil)
+            if model.entries(model.selected, gesture: model.gesture) != nil {
+                actionOptions
             }
             Button { showsGestureHelp.toggle() } label: {
                 Image(systemName: "questionmark.circle").font(.system(size: 18))
@@ -359,38 +413,45 @@ struct ContentView: View {
             .popover(isPresented: $showsGestureHelp, arrowEdge: .top) {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(model.l("按键如何响应")).font(.headline)
-                    Text(model.l("只设置单击时，按下立即生效，松开释放。"))
-                    Text(model.l("设置双击或长按后，单击会等待手势判定。长按达到设定时间后，可保持按住、短按一次或连按指定次数。"))
-                    Text(model.l("未设置的手势不参与判定。“未分配”则保留手势，但不执行动作。"))
+                    if model.isLayerSwitch(model.selected) {
+                        Text(model.l("单击切层在按下时立即生效；长按动作达到设定时间后执行，松开时退出切层。"))
+                    } else {
+                        Text(model.l("只设置单击且选择保持按住时，按下立即生效，松开释放。"))
+                        Text(model.l("单击、双击和长按决定何时触发；每个动作的按键输出可独立设置为保持按住、短按一次或连按指定次数。"))
+                    }
+                    if case .momentaryLayer = model.action(model.selected, gesture: .longPress) {
+                        Text(model.l("长按切层达到设定时间后启用，松开恢复；不会补发单击动作。"))
+                    }
+                    Text(model.l("带叉圆角正方形表示不执行动作；双击和长按设为空时不参与手势判定。倒三角表示继承较低活动层的当前动作。"))
                     if let hint = model.fnBehaviorHint { Text(hint).foregroundStyle(Palette.accent) }
                 }.font(.body).padding(24).frame(width: 360)
             }
         }
     }
-    private var longPressOptions: some View {
+    private var actionOptions: some View {
         HStack(spacing: 10) {
-            longPressModeSelector
-            if model.longPressBehavior() == .burst {
+            actionModeSelector
+            if model.actionBehavior() == .burst {
                 HStack(spacing: 4) {
-                    Button { model.setLongPressTapCount(model.longPressTapCount() - 1) } label: {
+                    Button { model.setActionTapCount(model.actionTapCount() - 1) } label: {
                         Image(systemName: "minus")
                             .frame(width: 32, height: 32)
                             // plain 样式的透明留白默认不响应；整个按钮格都应可点击。
                             .contentShape(Rectangle())
                     }
-                    .disabled(model.longPressTapCount() <= 2)
+                    .disabled(model.actionTapCount() <= 2)
                     .accessibilityLabel(model.l("减少次数"))
-                    Text(model.lf("%d 次", model.longPressTapCount()))
+                    Text(model.lf("%d 次", model.actionTapCount()))
                         .font(.system(size: 14, weight: .medium)).monospacedDigit()
                         .fixedSize().frame(minWidth: 42)
                         .accessibilityLabel(model.l("连按次数"))
-                        .accessibilityValue(model.lf("%d 次", model.longPressTapCount()))
-                    Button { model.setLongPressTapCount(model.longPressTapCount() + 1) } label: {
+                        .accessibilityValue(model.lf("%d 次", model.actionTapCount()))
+                    Button { model.setActionTapCount(model.actionTapCount() + 1) } label: {
                         Image(systemName: "plus")
                             .frame(width: 32, height: 32)
                             .contentShape(Rectangle())
                     }
-                    .disabled(model.longPressTapCount() >= 20)
+                    .disabled(model.actionTapCount() >= 20)
                     .accessibilityLabel(model.l("增加次数"))
                 }
                 .buttonStyle(.plain).padding(.horizontal, 5)
@@ -399,39 +460,39 @@ struct ContentView: View {
             }
         }.disabled(!model.canEdit)
     }
-    private func longPressModeTitle(_ behavior: LongPressBehavior) -> String {
+    private func actionModeTitle(_ behavior: LongPressBehavior) -> String {
         switch behavior {
         case .hold: return model.l("保持按住")
         case .tap: return model.l("短按一次")
         case .burst: return model.l("连按")
         }
     }
-    private var longPressModeSelector: some View {
+    private var actionModeSelector: some View {
         HStack(spacing: 2) {
-            ForEach(LongPressBehavior.allCases) { behavior in
-                Button { model.setLongPressBehavior(behavior) } label: {
-                    Text(longPressModeTitle(behavior))
+            ForEach(model.availableActionBehaviors, id: \.self) { behavior in
+                Button { model.setActionBehavior(behavior) } label: {
+                    Text(actionModeTitle(behavior))
                         .font(.system(size: 14, weight: .medium))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .foregroundStyle(model.longPressBehavior() == behavior ? Palette.background : Palette.text)
-                        .background(model.longPressBehavior() == behavior ? Palette.accent : .clear,
+                        .foregroundStyle(model.actionBehavior() == behavior ? Palette.background : Palette.text)
+                        .background(model.actionBehavior() == behavior ? Palette.accent : .clear,
                                     in: RoundedRectangle(cornerRadius: 5))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityAddTraits(model.longPressBehavior() == behavior ? .isSelected : [])
+                .accessibilityAddTraits(model.actionBehavior() == behavior ? .isSelected : [])
             }
         }
-        .padding(3).frame(width: 264, height: 32)
+        .padding(3).frame(width: model.availableActionBehaviors.count == 3 ? 264 : 176, height: 32)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: 7))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(model.l("触发方式"))
-        .help(model.longPressBehaviorHelp)
+        .accessibilityLabel(model.l("按键输出"))
+        .help(model.actionBehaviorHelp)
     }
     private func assignmentAccessibility(_ index: Int) -> String {
-        if index >= 4 { return model.label(index) }
+        if index >= 4 { return model.isInherited(index) ? model.l("继承底层") : model.label(index) }
         return AssignmentGesture.allCases.map { gesture in
-            model.lf("%@：%@", model.gestureTitle(gesture), model.action(index, gesture: gesture) == nil ? model.l("未设置") : model.label(index, gesture: gesture))
+            model.lf("%@：%@", model.gestureTitle(gesture), model.isInherited(index, gesture: gesture) ? model.l("继承底层") : model.isEmptyAction(index, gesture: gesture) ? model.l("不执行动作") : model.label(index, gesture: gesture))
         }.joined(separator: model.l("，"))
     }
     private var deviceBody: some View {
@@ -497,11 +558,38 @@ struct ContentView: View {
                         .help(model.batteryHelp)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 VStack(alignment: .leading, spacing: 12) {
-                    Label(model.l(model.device.heartbeatEnabled ? "后台运行中" : "后台已暂停"),
+                    Label(model.l(model.device.heartbeatPausedForInactivity ? "因空闲已停止保活" : model.device.heartbeatEnabled ? "后台运行中" : "后台已暂停"),
                           systemImage: "waveform.path.ecg").font(.headline)
                     Text(model.l("关闭窗口后继续运行，退出应用时停止。"))
                         .font(.body).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(24).background(Palette.surface, in: RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Label(model.l("保活"), systemImage: "waveform.path.ecg").font(.headline)
+                    Spacer()
+                    Picker(model.l("空闲后停止保活"), selection: Binding(
+                        get: { model.heartbeatIdleMinutes },
+                        set: { model.setHeartbeatIdleMinutes($0) })) {
+                        ForEach(AppModel.heartbeatIdleMinutesOptions, id: \.self) { minutes in
+                            Text(minutes == 0 ? model.l("永不") : model.lf("%d 分钟", minutes)).tag(minutes)
+                        }
+                    }.frame(width: 290)
+                    .accessibilityLabel(model.l("空闲后停止保活"))
+                }
+                Text(model.l("按 Vibe Key 的按键和旋钮操作计算空闲时间，按住期间不会超时。设置立即生效并保存在本机。"))
+                    .font(.callout).foregroundStyle(.secondary)
+                Text(model.l("停止保活后，本机 Layer、手势和宏暂停，设备可能恢复自身键位。可点“恢复保活”，或等待设备重新唤醒后恢复。"))
+                    .font(.callout).foregroundStyle(.secondary)
+                if model.device.heartbeatPausedForInactivity {
+                    HStack {
+                        Label(model.l("因空闲已停止保活"), systemImage: "pause.circle").foregroundStyle(Palette.accent)
+                        Spacer()
+                        Button(model.l("恢复保活")) { model.resumeHeartbeat() }
+                            .disabled(model.device.busy)
+                            .help(model.l("有按住的按键时，松开后恢复。"))
+                    }
+                }
             }.padding(24).background(Palette.surface, in: RoundedRectangle(cornerRadius: 10))
             DisclosureGroup(model.l("连接帮助")) {
                 VStack(alignment: .leading, spacing: 16) {

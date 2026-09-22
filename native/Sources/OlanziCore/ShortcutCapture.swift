@@ -21,6 +21,11 @@ public enum ShortcutCaptureError: LocalizedError, Equatable {
 /// 一次重叠按住区间形成一个组合；全部松开后封存，不把后续文本串成宏。
 public struct ShortcutRecordingSession {
     public private(set) var isComplete = false
+    /// 只暴露本次录制已观测到且尚未松开的键，供调用者补查漏失的松开事件。
+    /// Fn 必须先有明确的 keyCode 63 事件，不能从普通键的 function 标记推断。
+    public var heldKeyCodes: Set<UInt16> {
+        fnHeld ? heldKeys.union([63]) : heldKeys
+    }
     public var candidate: [KeyEntry] {
         Self.modifierOrder.filter { recordedModifiers.contains($0) }.map { KeyEntry(code: $0) }
             + primaryOrder.map { KeyEntry(code: $0) }
@@ -69,12 +74,27 @@ public struct ShortcutRecordingSession {
         try accept(next)
     }
 
+    /// 只补记已观测按键的松开，不从轮询状态录入新键或修饰键。
+    /// 调用者应先排空近期事件，并留出短暂宽限，避免物理状态领先待处理事件。
+    public mutating func reconcileReleasedKeys(pressedKeyCodes: Set<UInt16>, flags: UInt64) throws {
+        guard !isComplete else { return }
+        var next = self
+        next.heldKeys.formIntersection(pressedKeyCodes)
+        next.heldModifiers.formIntersection(Self.modifiers(in: flags))
+        if next.fnHeld, !pressedKeyCodes.contains(63) { next.fnHeld = false }
+        try accept(next)
+    }
+
     private mutating func updateModifiers(_ flags: UInt64) {
+        heldModifiers = Self.modifiers(in: flags)
+        recordedModifiers.formUnion(heldModifiers)
+    }
+
+    private static func modifiers(in flags: UInt64) -> Set<UInt8> {
         let modifiers: [(CGEventFlags, UInt8)] = [
             (.maskControl, 0xE0), (.maskAlternate, 0xE2), (.maskShift, 0xE1), (.maskCommand, 0xE3)
         ]
-        heldModifiers = Set(modifiers.compactMap { flag, usage in flags & flag.rawValue != 0 ? usage : nil })
-        recordedModifiers.formUnion(heldModifiers)
+        return Set(modifiers.compactMap { flag, usage in flags & flag.rawValue != 0 ? usage : nil })
     }
 
     private mutating func accept(_ next: Self) throws {

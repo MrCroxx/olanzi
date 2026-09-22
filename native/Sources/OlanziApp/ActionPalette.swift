@@ -31,7 +31,40 @@ struct ActionPalette: View {
     private var libraryKind: LibraryActionKind? {
         category == "宏" ? .macro : category == "APP" ? .application : nil
     }
-    private var categories: [String] { ["常用", "组合键", "APP", "宏"] + KeyCatalog.categories.filter { $0 != "常用" } }
+    private var categories: [String] { ["常用", "字符", "功能键", "数字键盘", "组合键", "Layer", "APP", "宏"] }
+    private var keyGroups: [String] {
+        switch category {
+        case "常用": return ["常用", "导航", "修饰键"]
+        case "字符": return ["字母", "数字", "符号"]
+        default: return [category]
+        }
+    }
+    private var visibleKeys: [KeyOption] {
+        // 协议目录保留旧配置的键名，选择器只展示当前驱动可以发送的按键。
+        let supported = KeyCatalog.options.filter { $0.code != 0 && model.isSupported($0.code) }
+        if search.isEmpty {
+            return keyGroups.flatMap { group in supported.filter { $0.category == group } }
+        }
+        return supported.filter {
+            model.l($0.label).localizedCaseInsensitiveContains(search)
+                || $0.label.localizedCaseInsensitiveContains(search)
+                || String(format: "0x%02X", $0.code).localizedCaseInsensitiveContains(search)
+        }
+    }
+
+    private func categorySymbol(_ name: String) -> String {
+        switch name {
+        case "常用": return "star"
+        case "组合键": return "command"
+        case "Layer": return "square.stack"
+        case "APP": return "app"
+        case "宏": return "list.bullet.rectangle"
+        case "字符": return "a.square"
+        case "功能键": return "f.square"
+        case "数字键盘": return "square.grid.3x3"
+        default: return "keyboard"
+        }
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -39,12 +72,12 @@ struct ActionPalette: View {
                 Text(model.l("选择按键")).font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary).padding(.horizontal, 10).padding(.bottom, 5)
                 ForEach(categories, id: \.self) { name in
-                    if name == "字母" { Divider().padding(.vertical, 4) }
+                    if name == "组合键" { Divider().padding(.vertical, 4) }
                     Button { category = name; search = "" } label: {
                         HStack(spacing: 8) {
-                            if name == "宏" { Image(systemName: "list.bullet.rectangle").frame(width: 16) }
-                            else if name == "APP" { Image(systemName: "app").frame(width: 16) }
-                            else if name == "组合键" { Image(systemName: "command").frame(width: 16) }
+                            Image(systemName: categorySymbol(name))
+                                .frame(width: 16, height: 16)
+                                .accessibilityHidden(true)
                             Text(model.l(name))
                             Spacer(minLength: 0)
                         }
@@ -66,6 +99,8 @@ struct ActionPalette: View {
                         .id(editor.id)
                 } else if let kind = libraryKind {
                     library(kind)
+                } else if category == "Layer" {
+                    layers
                 } else if category == "组合键" {
                     ShortcutAssignmentEditor(model: model)
                 } else {
@@ -79,6 +114,47 @@ struct ActionPalette: View {
         .buttonStyle(OlanziButtonStyle())
     }
 
+    @ViewBuilder
+    private var specialKeys: some View {
+        Button { model.inheritAction() } label: {
+            Image(systemName: "arrowtriangle.down").font(.system(size: 16, weight: .medium))
+        }
+        .buttonStyle(KeycapButtonStyle(selected: model.isInherited(model.selected, gesture: model.gesture)))
+        .disabled(!model.canEdit || model.selectedLayer == 0)
+        .help(model.l("继承较低活动层的当前动作。"))
+        .accessibilityLabel(model.l("继承当前动作"))
+        Button { model.clearAction() } label: {
+            Image(systemName: "xmark.square").font(.system(size: 19, weight: .medium))
+        }
+        .buttonStyle(KeycapButtonStyle(selected: !model.isInherited(model.selected, gesture: model.gesture) && model.isEmptyAction(model.selected, gesture: model.gesture)))
+        .disabled(!model.canEdit)
+        .help(model.l("当前动作不执行；双击和长按设为空时不参与手势判定。"))
+        .accessibilityLabel(model.l("不执行动作"))
+    }
+
+    private var layers: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(model.l("按住切换 Layer")).font(.headline)
+            Text(model.l("MO(n)：分配给单击时按下立即切层；分配给长按时达到长按时间后切层，松开恢复。"))
+                .font(.callout).foregroundStyle(.secondary)
+            Text(model.l("单击切层可同时设置长按动作；分配单击切层时仅清除双击。"))
+                .font(.caption).foregroundStyle(.secondary)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 90, maximum: 120), spacing: 8)], spacing: 8) {
+                specialKeys
+                ForEach(model.layerIDs.filter { $0 != 0 }, id: \.self) { id in
+                    Button { model.assignAction(.momentaryLayer(id)) } label: {
+                        Text("MO(\(id))").font(.system(.body, design: .monospaced))
+                    }
+                    .buttonStyle(KeycapButtonStyle(selected: !model.isInherited(model.selected, gesture: model.gesture) && model.assignedAction(model.selected, gesture: model.gesture) == .momentaryLayer(id)))
+                    .disabled(!model.canEdit || model.selected >= 4 || model.gesture == .doublePress)
+                    .accessibilityLabel(model.lf("按住切换到 Layer %d", id))
+                }
+            }
+            Text(model.l("未配置的控件继承底层；多个层同时启用时，编号较大的层优先。"))
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
     private var keyboard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -88,13 +164,14 @@ struct ActionPalette: View {
                     .textFieldStyle(OlanziTextFieldStyle()).frame(width: 180)
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 70, maximum: 100), spacing: 6)], spacing: 6) {
-                ForEach(KeyCatalog.options.filter { search.isEmpty ? $0.category == category : model.l($0.label).localizedCaseInsensitiveContains(search) || $0.label.localizedCaseInsensitiveContains(search) || String(format: "0x%02X", $0.code).localizedCaseInsensitiveContains(search) }) { key in
+                specialKeys
+                ForEach(visibleKeys) { key in
                     Button { model.assign(key.code) } label: {
                         Text(model.keyLabel(key.code)).lineLimit(2).multilineTextAlignment(.center)
                     }
-                    .buttonStyle(KeycapButtonStyle(selected: model.code(model.selected, gesture: model.gesture) == key.code))
-                    .disabled(!model.canEdit || !model.isSupported(key.code))
-                    .help(model.l(model.isSupported(key.code) ? "分配给当前动作" : "当前 macOS 不支持此键码"))
+                    .buttonStyle(KeycapButtonStyle(selected: !model.isInherited(model.selected, gesture: model.gesture) && model.code(model.selected, gesture: model.gesture) == key.code))
+                    .disabled(!model.canEdit)
+                    .help(model.l("分配给当前动作"))
                     .accessibilityLabel(model.lf("分配 %@", model.keyLabel(key.code)))
                 }
             }
@@ -142,7 +219,7 @@ struct ActionPalette: View {
     }
 
     private func libraryKeycap(_ item: NamedHostAction, kind: LibraryActionKind) -> some View {
-        let selected = model.assignedAction(model.selected, gesture: model.gesture) == .library(item.id)
+        let selected = !model.isInherited(model.selected, gesture: model.gesture) && model.assignedAction(model.selected, gesture: model.gesture) == .library(item.id)
         let shortName = (kind == .macro ? "M" : "A") + String(item.slot)
         return VStack(spacing: 6) {
             Button { _ = model.assignLibraryAction(item.id) } label: {
@@ -177,13 +254,23 @@ private struct ShortcutAssignmentEditor: View {
             Text(model.l("组合键")).font(.headline)
             Text(model.l("按住需要组合的按键，全部松开后完成。"))
                 .font(.callout).foregroundStyle(.secondary)
-            HStack(spacing: 12) {
-                Image(systemName: recorder.isRecording ? "record.circle" : "command")
-                    .foregroundStyle(Palette.accent)
-                Text(model.actionLabel(entries: recorder.isRecording ? recorder.candidate : keys))
-                    .font(.system(size: 22, weight: .medium)).foregroundStyle(Palette.accent)
-                    .lineLimit(3).frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            }.padding(12).background(Palette.background, in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 8) {
+                if recorder.isRecording {
+                    HStack(spacing: 7) {
+                        Circle().fill(Color.red).frame(width: 7, height: 7)
+                        Text(model.l("录制中")).font(.callout)
+                    }
+                }
+                let preview = recorder.isRecording ? (recorder.candidate ?? []) : keys
+                if !preview.isEmpty {
+                    Text(model.actionLabel(entries: preview))
+                        .font(.system(size: 22, weight: .medium)).foregroundStyle(Palette.accent)
+                        .lineLimit(3)
+                } else if !recorder.isRecording {
+                    Text(model.l("尚未录制")).foregroundStyle(.secondary)
+                }
+            }.frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                .padding(12).background(Palette.background, in: RoundedRectangle(cornerRadius: 8))
             HStack {
                 Button {
                     keys = []
@@ -203,11 +290,13 @@ private struct ShortcutAssignmentEditor: View {
             if let error = recorder.error { Text(model.displayError(error)).foregroundStyle(.orange).font(.callout) }
             Text(model.l("系统快捷键可能被 macOS 优先处理。")) .font(.caption).foregroundStyle(.secondary)
         }
-        .onChange(of: recorder.isRecording) { _, active in
-            if !active, let candidate = recorder.candidate { keys = candidate }
+        .background(ShortcutRecordingFocus(recorder: recorder).frame(width: 0, height: 0))
+        .onChange(of: recorder.result) { _, result in
+            if let result { keys = result.entries }
         }
         .onChange(of: model.selected) { _, _ in reset() }
         .onChange(of: model.gesture) { _, _ in reset() }
+        .onChange(of: model.selectedLayer) { _, _ in reset() }
         .onDisappear { recorder.reset() }
     }
     private func reset() { recorder.reset(); keys = []; target = nil }

@@ -1,0 +1,182 @@
+2026-09-21 — AU05 battery decoding, static analysis only
+Sources: /Applications/Ulanzi Studio.app/Contents/Frameworks/kwdm.dylib
+         /Applications/Ulanzi Studio.app/Contents/MacOS/UlanziDeck
+lldb target create + disassemble only; Studio was not launched.
+
+[CONFIRMED] frame[4..5] little-endian voltage; frame[6..7] little-endian battery level.
+[CONFIRMED] frame[10] is passed as charging; frame[8..9] are not interpreted here.
+[CONFIRMED] battery is forwarded to the battery icon with a 100 upper bound and 10/25/50/75 thresholds.
+This confirms the 0–100 battery level used as percentage, not a voltage-derived estimate.
+Unknown charging values remain unknown in Olanzi.
+
+Parser excerpts (x2 is advanced by four to the payload):
+kwdm.dylib`-[MessageHandler handleDeviceMessage:length:]:
+kwdm.dylib[0x16c94] <+0>:    sub    sp, sp, #0xd0
+kwdm.dylib[0x16c98] <+4>:    stp    x28, x27, [sp, #0x70]
+kwdm.dylib[0x16c9c] <+8>:    stp    x26, x25, [sp, #0x80]
+kwdm.dylib[0x16ca0] <+12>:   stp    x24, x23, [sp, #0x90]
+kwdm.dylib[0x16ca4] <+16>:   stp    x22, x21, [sp, #0xa0]
+kwdm.dylib[0x16ca8] <+20>:   stp    x20, x19, [sp, #0xb0]
+kwdm.dylib[0x16cac] <+24>:   stp    x29, x30, [sp, #0xc0]
+kwdm.dylib[0x16cb0] <+28>:   add    x29, sp, #0xc0
+kwdm.dylib[0x16cb4] <+32>:   adrp   x8, 38
+kwdm.dylib[0x16cb8] <+36>:   ldr    x8, [x8, #0xc8]
+kwdm.dylib[0x16cbc] <+40>:   ldr    x8, [x8]
+kwdm.dylib[0x16cc0] <+44>:   stur   x8, [x29, #-0x58]
+kwdm.dylib[0x16cc4] <+48>:   ldr    w8, [x2, #0x4]!
+kwdm.dylib[0x16cc8] <+52>:   ldurb  w12, [x2, #-0x3]
+kwdm.dylib[0x16ccc] <+56>:   ldurb  w10, [x2, #-0x2]
+kwdm.dylib[0x16cd0] <+60>:   ldurb  w27, [x2, #-0x1]
+kwdm.dylib[0x16cd4] <+64>:   str    w8, [sp, #0x18]
+kwdm.dylib[0x16cd8] <+68>:   ldrh   w8, [x2, #0x4]
+kwdm.dylib[0x16cdc] <+72>:   strh   w8, [sp, #0x1c]
+kwdm.dylib[0x16ce0] <+76>:   ldrb   w20, [x2, #0x6]
+kwdm.dylib[0x16ce4] <+80>:   ldrb   w28, [x2, #0x7]
+kwdm.dylib[0x16ce8] <+84>:   ldrh   w9, [x2, #0x8]
+kwdm.dylib[0x16cec] <+88>:   ldrb   w8, [x2, #0xa]
+kwdm.dylib[0x16cf0] <+92>:   ldrb   w22, [x2, #0xb]
+...
+kwdm.dylib[0x16d68] <+212>:  br     x12
+kwdm.dylib[0x16d6c] <+216>:  tbz    w27, #0x4, 0x1749c        ; <+2056>
+kwdm.dylib[0x16d70] <+220>:  ldrh   w21, [sp, #0x18]
+kwdm.dylib[0x16d74] <+224>:  mov    w8, #0xffff               ; =65535 
+kwdm.dylib[0x16d78] <+228>:  cmp    w21, w8
+kwdm.dylib[0x16d7c] <+232>:  b.eq   0x1749c                   ; <+2056>
+kwdm.dylib[0x16d80] <+236>:  ldrh   w22, [sp, #0x1a]
+kwdm.dylib[0x16d84] <+240>:  mov    x0, x19
+kwdm.dylib[0x16d88] <+244>:  bl     0x28220                   ; objc_msgSend$delegate
+kwdm.dylib[0x16d8c] <+248>:  mov    x29, x29
+kwdm.dylib[0x16d90] <+252>:  bl     0x27b24                   ; symbol stub for: objc_retainAutoreleasedReturnValue
+kwdm.dylib[0x16d94] <+256>:  mov    x23, x0
+kwdm.dylib[0x16d98] <+260>:  adrp   x8, 50
+kwdm.dylib[0x16d9c] <+264>:  ldr    x1, [x8, #0xcf8]
+kwdm.dylib[0x16da0] <+268>:  bl     0x27ae8                   ; symbol stub for: objc_opt_respondsToSelector
+kwdm.dylib[0x16da4] <+272>:  mov    x24, x0
+kwdm.dylib[0x16da8] <+276>:  mov    x0, x23
+kwdm.dylib[0x16dac] <+280>:  bl     0x27af4                   ; symbol stub for: objc_release
+kwdm.dylib[0x16db0] <+284>:  tbz    w24, #0x0, 0x1749c        ; <+2056>
+kwdm.dylib[0x16db4] <+288>:  mov    x0, x19
+kwdm.dylib[0x16db8] <+292>:  bl     0x28220                   ; objc_msgSend$delegate
+kwdm.dylib[0x16dbc] <+296>:  mov    x29, x29
+kwdm.dylib[0x16dc0] <+300>:  bl     0x27b24                   ; symbol stub for: objc_retainAutoreleasedReturnValue
+kwdm.dylib[0x16dc4] <+304>:  mov    x19, x0
+kwdm.dylib[0x16dc8] <+308>:  and    x2, x27, #0x1
+kwdm.dylib[0x16dcc] <+312>:  ubfx   w6, w28, #3, #1
+kwdm.dylib[0x16dd0] <+316>:  ubfx   w8, w28, #2, #1
+kwdm.dylib[0x16dd4] <+320>:  strb   w8, [sp]
+kwdm.dylib[0x16dd8] <+324>:  and    w7, w28, #0x3
+kwdm.dylib[0x16ddc] <+328>:  mov    x3, x22
+kwdm.dylib[0x16de0] <+332>:  mov    x4, x21
+kwdm.dylib[0x16de4] <+336>:  mov    x5, x20
+kwdm.dylib[0x16de8] <+340>:  bl     0x29fa0                   ; objc_msgSend$onMessageDeviceBattery:battery:voltage:charging:chargeFull:lowbat:powerOff:
+kwdm.dylib[0x16dec] <+344>:  b      0x189a0                   ; <+7436>
+
+UI JSON battery -> integer -> batteryUpdated signal:
+UlanziDeck[0x1001712a8] <+96>:   add    x1, x1, #0x177            ; "battery"
+UlanziDeck[0x1001712ac] <+100>:  add    x8, sp, #0x40
+UlanziDeck[0x1001712b0] <+104>:  mov    w0, #0x7                  ; =7 
+UlanziDeck[0x1001712b4] <+108>:  bl     0x10092ba60               ; symbol stub for: QString::fromUtf8(QByteArrayView)
+UlanziDeck[0x1001712b8] <+112>:  ldr    q0, [sp, #0x40]
+UlanziDeck[0x1001712bc] <+116>:  str    q0, [sp, #0x60]
+UlanziDeck[0x1001712c0] <+120>:  ldr    x8, [sp, #0x50]
+...
+UlanziDeck[0x100171374] <+300>:  add    x1, sp, #0x80
+UlanziDeck[0x100171378] <+304>:  mov    x0, x21
+UlanziDeck[0x10017137c] <+308>:  bl     0x10092d218               ; symbol stub for: QJsonObject::operator[](QString const&) const
+UlanziDeck[0x100171380] <+312>:  sub    x0, x29, #0x60
+UlanziDeck[0x100171384] <+316>:  mov    w1, #0x0                  ; =0 
+UlanziDeck[0x100171388] <+320>:  bl     0x10092d014               ; symbol stub for: QJsonValue::toInt(int) const
+UlanziDeck[0x10017138c] <+324>:  mov    x22, x0
+UlanziDeck[0x100171390] <+328>:  sub    x0, x29, #0x60
+...
+UlanziDeck[0x1001718c8] <+1664>: bl     0x10092b07c               ; symbol stub for: QDebug::~QDebug()
+UlanziDeck[0x1001718cc] <+1668>: mov    x0, x20
+UlanziDeck[0x1001718d0] <+1672>: mov    x1, x19
+UlanziDeck[0x1001718d4] <+1676>: mov    x2, x22
+UlanziDeck[0x1001718d8] <+1680>: mov    w3, #0x1                  ; =1 
+UlanziDeck[0x1001718dc] <+1684>: mov    x4, x23
+UlanziDeck[0x1001718e0] <+1688>: bl     0x10076d8a0               ; DeviceMessageHandler::deviceBatteryUpdated(QString const&, int, bool, bool)
+UlanziDeck[0x1001718e4] <+1692>: ldp    x29, x30, [sp, #0x100]
+
+Signal receiver -> battery icon:
+UlanziDeck`UlanziDeck::onDeviceBatteryUpdated:
+UlanziDeck[0x1006c8fd0] <+0>:   sub    sp, sp, #0xb0
+UlanziDeck[0x1006c8fd4] <+4>:   stp    x28, x27, [sp, #0x50]
+UlanziDeck[0x1006c8fd8] <+8>:   stp    x26, x25, [sp, #0x60]
+UlanziDeck[0x1006c8fdc] <+12>:  stp    x24, x23, [sp, #0x70]
+UlanziDeck[0x1006c8fe0] <+16>:  stp    x22, x21, [sp, #0x80]
+UlanziDeck[0x1006c8fe4] <+20>:  stp    x20, x19, [sp, #0x90]
+UlanziDeck[0x1006c8fe8] <+24>:  stp    x29, x30, [sp, #0xa0]
+UlanziDeck[0x1006c8fec] <+28>:  add    x29, sp, #0xa0
+UlanziDeck[0x1006c8ff0] <+32>:  mov    x25, x4
+UlanziDeck[0x1006c8ff4] <+36>:  mov    x20, x2
+UlanziDeck[0x1006c8ff8] <+40>:  mov    x22, x1
+UlanziDeck[0x1006c8ffc] <+44>:  mov    x21, x0
+UlanziDeck[0x1006c9000] <+48>:  add    x23, x0, #0xc90
+UlanziDeck[0x1006c9004] <+52>:  ldr    x8, [x0, #0xc90]
+UlanziDeck[0x1006c9008] <+56>:  cbz    x8, 0x1006c9018           ; <+72>
+UlanziDeck[0x1006c900c] <+60>:  ldr    w9, [x8]
+UlanziDeck[0x1006c9010] <+64>:  cmp    w9, #0x1
+UlanziDeck[0x1006c9014] <+68>:  b.le   0x1006c9040               ; <+112>
+UlanziDeck[0x1006c9018] <+72>:  mov    x0, x23
+...
+UlanziDeck[0x1006c9290] <+704>: cbz    w8, 0x1006c929c           ; <+716>
+UlanziDeck[0x1006c9294] <+708>: mov    w1, #0x20                 ; =32 
+UlanziDeck[0x1006c9298] <+712>: bl     0x10092906c               ; symbol stub for: QTextStream::operator<<(char)
+UlanziDeck[0x1006c929c] <+716>: add    x0, sp, #0x30
+UlanziDeck[0x1006c92a0] <+720>: bl     0x10092b07c               ; symbol stub for: QDebug::~QDebug()
+UlanziDeck[0x1006c92a4] <+724>: ldr    x0, [x21, #0x300]
+UlanziDeck[0x1006c92a8] <+728>: mov    x1, x20
+UlanziDeck[0x1006c92ac] <+732>: mov    x2, x25
+UlanziDeck[0x1006c92b0] <+736>: bl     0x10001edd8               ; IconDrawer::setIconForLabel(QLabel*, int, bool)
+UlanziDeck[0x1006c92b4] <+740>: ldp    x29, x30, [sp, #0xa0]
+
+Battery icon scale and charging variant:
+UlanziDeck`IconDrawer::setIconForLabel:
+UlanziDeck[0x10001edd8] <+0>:    sub    sp, sp, #0x110
+UlanziDeck[0x10001eddc] <+4>:    stp    x28, x27, [sp, #0xb0]
+UlanziDeck[0x10001ede0] <+8>:    stp    x26, x25, [sp, #0xc0]
+UlanziDeck[0x10001ede4] <+12>:   stp    x24, x23, [sp, #0xd0]
+UlanziDeck[0x10001ede8] <+16>:   stp    x22, x21, [sp, #0xe0]
+UlanziDeck[0x10001edec] <+20>:   stp    x20, x19, [sp, #0xf0]
+UlanziDeck[0x10001edf0] <+24>:   stp    x29, x30, [sp, #0x100]
+UlanziDeck[0x10001edf4] <+28>:   add    x29, sp, #0x100
+UlanziDeck[0x10001edf8] <+32>:   cbz    x0, 0x10001f304           ; <+1324>
+UlanziDeck[0x10001edfc] <+36>:   mov    x20, x2
+UlanziDeck[0x10001ee00] <+40>:   mov    x22, x1
+UlanziDeck[0x10001ee04] <+44>:   mov    x19, x0
+UlanziDeck[0x10001ee08] <+48>:   mov    w8, #0x64                 ; =100 
+UlanziDeck[0x10001ee0c] <+52>:   cmp    w1, #0x64
+UlanziDeck[0x10001ee10] <+56>:   csel   w23, w1, w8, lt
+UlanziDeck[0x10001ee14] <+60>:   stp    xzr, xzr, [sp, #0x70]
+...
+UlanziDeck[0x10001effc] <+548>:  cmp    w21, #0xb
+UlanziDeck[0x10001f000] <+552>:  b.hs   0x10001f00c               ; <+564>
+UlanziDeck[0x10001f004] <+556>:  mov    w21, #0x1                 ; =1 
+UlanziDeck[0x10001f008] <+560>:  b      0x10001f038               ; <+608>
+UlanziDeck[0x10001f00c] <+564>:  cmp    w21, #0x1a
+UlanziDeck[0x10001f010] <+568>:  b.hs   0x10001f01c               ; <+580>
+UlanziDeck[0x10001f014] <+572>:  mov    w21, #0x2                 ; =2 
+UlanziDeck[0x10001f018] <+576>:  b      0x10001f038               ; <+608>
+UlanziDeck[0x10001f01c] <+580>:  cmp    w21, #0x33
+UlanziDeck[0x10001f020] <+584>:  b.hs   0x10001f02c               ; <+596>
+UlanziDeck[0x10001f024] <+588>:  mov    w21, #0x3                 ; =3 
+UlanziDeck[0x10001f028] <+592>:  b      0x10001f038               ; <+608>
+UlanziDeck[0x10001f02c] <+596>:  cmp    w21, #0x4c
+UlanziDeck[0x10001f030] <+600>:  mov    w8, #0x4                  ; =4 
+UlanziDeck[0x10001f034] <+604>:  cinc   x21, x8, hs
+UlanziDeck[0x10001f038] <+608>:  adrp   x8, 13567
+UlanziDeck[0x10001f03c] <+612>:  add    x8, x8, #0x72c
+UlanziDeck[0x10001f040] <+616>:  stp    xzr, x8, [sp, #0x20]
+UlanziDeck[0x10001f044] <+620>:  mov    w8, #0x23                 ; =35 
+UlanziDeck[0x10001f048] <+624>:  str    x8, [sp, #0x30]
+UlanziDeck[0x10001f04c] <+628>:  cmp    w20, #0x0
+UlanziDeck[0x10001f050] <+632>:  mov    w8, #0x6                  ; =6 
+UlanziDeck[0x10001f054] <+636>:  mov    w9, #0x8                  ; =8 
+UlanziDeck[0x10001f058] <+640>:  csel   x0, x9, x8, ne
+UlanziDeck[0x10001f05c] <+644>:  adrp   x8, 13476
+UlanziDeck[0x10001f060] <+648>:  add    x8, x8, #0x3c7            ; "normal"
+UlanziDeck[0x10001f064] <+652>:  adrp   x9, 13476
+UlanziDeck[0x10001f068] <+656>:  add    x9, x9, #0x3be            ; "charging"
+UlanziDeck[0x10001f06c] <+660>:  csel   x1, x9, x8, ne
+UlanziDeck[0x10001f070] <+664>:  add    x8, sp, #0x50

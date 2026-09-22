@@ -4,7 +4,7 @@
 > 一个文件，零第三方依赖，直接和硬件对话。
 > 源码：[vibekey.py](../vibekey.py)
 
-> 📚 文档集：[README](../README.zh.md) · [01 职责边界](01-ulanzi-studio-scope.zh.md) · [02 协议](02-vibekey-protocol.zh.md) · **03 工具手册** · [04 逆向方法论](04-methodology.zh.md) · [05 验证记录](05-verification-log.zh.md)
+> 📚 文档集：[README](../README.zh.md) · [01 职责边界](01-ulanzi-studio-scope.zh.md) · [02 协议](02-vibekey-protocol.zh.md) · **03 工具手册** · [04 逆向方法论](04-methodology.zh.md) · [05 验证记录](05-verification-log.zh.md) · [10 输入运行时](10-input-runtime.zh.md)
 
 ---
 
@@ -53,10 +53,10 @@ python3 vibekey.py --probe --poll 2
 | 参数 | 作用 |
 |---|---|
 | `--probe` | 启动时先读一遍设备状态（固件/电量/降噪/SN…） |
-| `--poll 2` | 每 2 秒发一次保活查询，让设备保持唤醒 |
+| `--poll 2` | 每 2 秒读取 Hooks 模式；防休眠效果未验证 |
 
-**为什么需要 `--poll`？** 设备是被动的 —— 不轮询就不说话，连心跳都没有。
-`--poll 2` 是最稳的间隔。
+**`--poll` 做什么？** 它周期性读取 Hooks 模式。dongle 有回复不代表本体清醒。
+每 2 秒查询可正常往返；Studio 专用心跳与测量限制见 [07 心跳调查](07-heartbeat-investigation.zh.md)。
 
 ### 2.2 配置模式
 
@@ -310,7 +310,7 @@ wire = bytes([0x55]) + ct[:63]    # 64 字节（含 report ID）
 
 ### 7.3 设备是被动的
 
-不主动轮询，设备**一条报文都不发**（连心跳都没有）。所以 `--poll` 是保持唤醒的关键。
+一次 60 秒空闲测量没有收到通知，但结束时在线状态仍为在线。**没有报文不代表休眠。** Hooks 轮询与 Studio 专用心跳不同，长期防休眠效果需要受控对照。
 
 ### 7.4 并发打开是安全的
 

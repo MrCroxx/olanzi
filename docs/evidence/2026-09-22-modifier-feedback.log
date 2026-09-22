@@ -1,0 +1,63 @@
+2026-09-22 — Command modifier feedback preceding intermittent Fn failure
+Source: /tmp/olanzi-fn-intermittent.log, selected physical-fn, device-input, and emitter lines only.
+No deviceSn, flashId, or device-identity frames are included.
+
+[CONFIRMED] The last Command event of the Command+Enter action retains the Command bit.
+537919496 = 0x20100008, including Command 0x00100000.
+The following Fn down is 546308104 = 0x20900008, including Fn 0x00800000 and Command.
+Fn up clears Fn but still retains Command: 537919496 = 0x20100008.
+These are emitted-event flags, not independent evidence that a physical Command key was held.
+
+User observation reported during diagnosis: pressing the physical keyboard Fn once made
+AU05 Fn work again. Three earlier successful trials did not reproduce this failure;
+those successes did not establish that the intermittent fault was absent.
+The failure excerpt records the reproduced defect; post-fix observations follow separately below.
+
+Physical Fn sample (unchanged; one PID 0 press/release pair, not all keyboard overlap scenarios):
+2026-09-22 00:42:57.526 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:physical-fn] Fn 来源 PID=0，按住=true
+2026-09-22 00:42:59.432 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:physical-fn] Fn 来源 PID=0，按住=false
+
+Failure excerpt (unchanged):
+2026-09-22 00:45:18.552 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=true
+2026-09-22 00:45:18.621 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=false
+2026-09-22 00:45:18.701 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=true
+2026-09-22 00:45:18.765 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=1，按下=false
+2026-09-22 00:45:18.767 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:emitter] type=12 keycode=55 flags=537919496
+2026-09-22 00:45:18.767 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:emitter] type=10 keycode=36 flags=537919496
+2026-09-22 00:45:18.767 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:emitter] type=11 keycode=36 flags=537919496
+2026-09-22 00:45:18.768 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:emitter] type=12 keycode=55 flags=537919496
+2026-09-22 00:45:20.674 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=0，按下=true
+2026-09-22 00:45:20.675 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:emitter] type=12 keycode=63 flags=546308104
+2026-09-22 00:45:22.467 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=0，按下=false
+2026-09-22 00:45:22.467 Db Olanzi[21888:1ff25c0] [com.mrcroxx.olanzi:emitter] type=12 keycode=63 flags=537919496
+
+Post-fix verification — process 28468, two Command+Enter then AU05 Fn trials
+[CONFIRMED] Both final Command releases clear Command: 536870912 = 0x20000000.
+Both subsequent Fn down events are 545259520 = 0x20800000; Fn up returns to
+536870912 = 0x20000000, with no residual Command bit.
+Emitter down/up intervals are about 1.1 s and 0.87 s, not two-second holds.
+User observation after these two trials: 没问题！
+This confirms these two trials, not all keyboard-overlap or interruption scenarios.
+The last two lines separately observe a physical right Shift (PID 0, keycode 60)
+press/release pair. They do not establish overlapping use with AU05 actions.
+Physical long-press Tap Once remains unverified.
+
+Post-fix excerpt (unchanged):
+2026-09-22 00:57:00.822 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:emitter] type=12 keycode=55 flags=537919496
+2026-09-22 00:57:00.822 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:emitter] type=10 keycode=36 flags=537919496
+2026-09-22 00:57:00.841 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:emitter] type=11 keycode=36 flags=537919496
+2026-09-22 00:57:00.841 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:emitter] type=12 keycode=55 flags=536870912
+2026-09-22 00:57:02.113 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=0，按下=true
+2026-09-22 00:57:02.114 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:emitter] type=12 keycode=63 flags=545259520
+2026-09-22 00:57:03.237 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=0，按下=false
+2026-09-22 00:57:03.241 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:emitter] type=12 keycode=63 flags=536870912
+2026-09-22 00:57:05.016 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:emitter] type=12 keycode=55 flags=537919496
+2026-09-22 00:57:05.016 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:emitter] type=10 keycode=36 flags=537919496
+2026-09-22 00:57:05.023 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:emitter] type=11 keycode=36 flags=537919496
+2026-09-22 00:57:05.026 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:emitter] type=12 keycode=55 flags=536870912
+2026-09-22 00:57:06.149 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=0，按下=true
+2026-09-22 00:57:06.151 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:emitter] type=12 keycode=63 flags=545259520
+2026-09-22 00:57:07.024 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:device-input] AU05 厂商按键：控件=0，按下=false
+2026-09-22 00:57:07.024 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:emitter] type=12 keycode=63 flags=536870912
+2026-09-22 00:57:10.185 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:physical-fn] 修饰键来源 PID=0，键码=60，标志=131332
+2026-09-22 00:57:10.404 Db Olanzi[28468:1ffb79d] [com.mrcroxx.olanzi:physical-fn] 修饰键来源 PID=0，键码=60，标志=256

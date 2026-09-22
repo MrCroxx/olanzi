@@ -170,6 +170,7 @@ struct ContentView: View {
                     Label(model.l(item.2), systemImage: item.1).font(.system(size: 14, weight: .medium))
                         .foregroundStyle(model.page == item.0 ? Palette.accent : Color.gray)
                         .frame(width: 82, height: 42)
+                        .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel(model.l(item.2))
             }
             Spacer()

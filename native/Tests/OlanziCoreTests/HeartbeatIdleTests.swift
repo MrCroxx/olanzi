@@ -101,14 +101,23 @@ private final class IdleTestTransport: DeviceTransport, @unchecked Sendable {
     func writeKey(index: Int, code: UInt8) throws { XCTFail("空闲保活设置不能写设备键位") }
 }
 
+private final class IdleTestWakeMonitor: DeviceWakeMonitoring {
+    var onActivity: ((Bool) -> Void)?
+    var error: String?
+    var opened = false
+    func open() throws { opened = true; error = nil }
+    func close() { opened = false; error = nil }
+}
+
 private struct IdleTestHarness {
     let clock = IdleTestClock()
     let events = IdleTestEvents()
     let snapshots = IdleTestSnapshots()
     let transport = IdleTestTransport()
+    let wakeMonitor = IdleTestWakeMonitor()
     let service: NativeDeviceService
     init(timeout: TimeInterval?) {
-        let clock = clock, events = events, snapshots = snapshots, transport = transport
+        let clock = clock, events = events, snapshots = snapshots, transport = transport, wakeMonitor = wakeMonitor
         let configuration = HostKeymap(controls: (0..<6).map {
             ControlActionMap(index: $0, press: [KeyEntry(code: 0x28)])
         })
@@ -117,7 +126,7 @@ private struct IdleTestHarness {
                                       bridgeFactory: {
             VendorKeyBridge(permissions: { (true, true) }, now: { clock.now },
                             emit: { _, pressed, _ in events.append(pressed) })
-        }, batteryClock: { clock.now }, heartbeatIdleTimeout: timeout, idleClock: { clock.now },
+        }, batteryClock: { clock.now }, heartbeatIdleTimeout: timeout, idleClock: { clock.now }, wakeMonitorFactory: { wakeMonitor },
                                       onChange: { snapshots.append($0) })
     }
 }
@@ -217,17 +226,111 @@ final class HeartbeatIdleTests: XCTestCase {
         XCTAssertEqual(harness.events.presses, [true, false])
     }
 
-    func testExpiryStopsHeartbeatAndForwardingAndVendorEventsDoNotResume() throws {
+    func testVendorWakeWaitsForReleaseAndDoesNotReplayFirstGesture() throws {
         let harness = try start()
         defer { stop(harness) }
         try pause(harness)
         let count = harness.transport.heartbeatCount
         event(harness, pressed: true, at: 1_011)
-        event(harness, pressed: false, at: 1_012)
-        event(harness, index: 4, pressed: true, at: 1_013)
-        advance(harness, to: 1_100)
+        advance(harness, to: 1_020)
         XCTAssertFalse(harness.transport.heartbeatEnabled)
         XCTAssertEqual(harness.transport.heartbeatCount, count)
+        event(harness, pressed: false, at: 1_021)
+        advance(harness, to: 1_021.05)
+        XCTAssertFalse(harness.transport.heartbeatEnabled)
+        let mark = harness.snapshots.count
+        advance(harness, to: 1_021.2)
+        _ = try XCTUnwrap(harness.snapshots.wait(after: mark) { $0.heartbeatEnabled && !$0.heartbeatPausedForInactivity })
+        XCTAssertTrue(harness.events.presses.isEmpty)
+        event(harness, pressed: true, at: 1_022)
+        event(harness, pressed: false, at: 1_023)
+        XCTAssertEqual(harness.events.presses, [true, false])
+    }
+
+    func testRotaryWakeResumesWithoutWaitingForMissingRelease() throws {
+        let harness = try start()
+        defer { stop(harness) }
+        try pause(harness)
+        event(harness, index: 4, pressed: true, at: 1_011)
+        let mark = harness.snapshots.count
+        advance(harness, to: 1_011.2)
+        _ = try XCTUnwrap(harness.snapshots.wait(after: mark) { $0.heartbeatEnabled })
+        XCTAssertTrue(harness.events.presses.isEmpty)
+    }
+
+    func testStandardHIDWakeWaitsForReleaseAndKeepsAllRequestsSilentUntilThen() throws {
+        let harness = try start()
+        defer { stop(harness) }
+        try pause(harness)
+        let counts = harness.transport.requestCounts
+        perform(harness) {
+            XCTAssertTrue(harness.wakeMonitor.opened)
+            harness.wakeMonitor.onActivity?(true)
+        }
+        advance(harness, to: 1_030)
+        XCTAssertEqual(harness.transport.requestCounts, counts)
+        perform(harness) { harness.wakeMonitor.onActivity?(false) }
+        advance(harness, to: 1_030.05)
+        XCTAssertFalse(harness.transport.heartbeatEnabled)
+        let mark = harness.snapshots.count
+        advance(harness, to: 1_030.2)
+        _ = try XCTUnwrap(harness.snapshots.wait(after: mark) { $0.heartbeatEnabled && !$0.heartbeatPausedForInactivity })
+        perform(harness) { XCTAssertFalse(harness.wakeMonitor.opened) }
+        XCTAssertTrue(harness.events.presses.isEmpty)
+        event(harness, pressed: true, at: 1_031)
+        event(harness, pressed: false, at: 1_032)
+        XCTAssertEqual(harness.events.presses, [true, false])
+    }
+
+    func testBothWakeInterfacesMustReleaseBeforeResuming() throws {
+        let harness = try start()
+        defer { stop(harness) }
+        try pause(harness)
+        event(harness, pressed: true, at: 1_011)
+        perform(harness) { harness.wakeMonitor.onActivity?(true) }
+        event(harness, pressed: false, at: 1_012)
+        advance(harness, to: 1_020)
+        XCTAssertFalse(harness.transport.heartbeatEnabled)
+        perform(harness) { harness.wakeMonitor.onActivity?(false) }
+        let mark = harness.snapshots.count
+        advance(harness, to: 1_020.2)
+        _ = try XCTUnwrap(harness.snapshots.wait(after: mark) { $0.heartbeatEnabled })
+        XCTAssertTrue(harness.events.presses.isEmpty)
+    }
+
+    func testWakeMonitorFailureDoesNotTreatLostReleaseAsPermissionToResume() throws {
+        let harness = try start()
+        defer { stop(harness) }
+        try pause(harness)
+        perform(harness) { harness.wakeMonitor.onActivity?(true) }
+        let mark = harness.snapshots.count
+        perform(harness) { harness.wakeMonitor.error = "测试监听中断" }
+        _ = try XCTUnwrap(harness.snapshots.wait(after: mark) {
+            $0.error?.contains("测试监听中断") == true && $0.heartbeatPausedForInactivity
+        })
+        advance(harness, to: 1_050)
+        perform(harness) {}
+        XCTAssertFalse(harness.transport.heartbeatEnabled)
+        XCTAssertTrue(harness.events.presses.isEmpty)
+    }
+
+    func testVendorWakeStillTracksHeldControlsWhenOnlineStateIsUnknown() throws {
+        let harness = try start()
+        defer { stop(harness) }
+        try pause(harness)
+        harness.transport.setOnline(nil)
+        var mark = harness.snapshots.count
+        harness.service.connect()
+        _ = try XCTUnwrap(harness.snapshots.completed(after: mark) { $0.online == nil })
+        event(harness, pressed: true, at: 1_011)
+        let counts = harness.transport.requestCounts
+        advance(harness, to: 1_030)
+        XCTAssertEqual(harness.transport.requestCounts, counts)
+        harness.transport.setOnline(true)
+        event(harness, pressed: false, at: 1_031)
+        mark = harness.snapshots.count
+        advance(harness, to: 1_031.2)
+        _ = try XCTUnwrap(harness.snapshots.wait(after: mark) { $0.heartbeatEnabled })
         XCTAssertTrue(harness.events.presses.isEmpty)
     }
 

@@ -80,6 +80,8 @@ The earlier conclusion that keys use standard HID without Studio applies only to
 
 [INFERRED] Remaining queries may interfere with firmware idle timing; source comparison cannot establish the effect of individual requests on the current firmware. Automatic sleep timing after the fix has not been measured, and this fix does not change on-device standby or sleep settings.
 
+[CONFIRMED] Subsequent user feedback was that the device lights came on but configured actions did not respond; the running UI still showed an idle keepalive pause. The pause latch required manual resumption, vendor input did not clear it, and returned standard HID input was not monitored. The fix adds an AU05-specific passive standard input listener and lets physical activity on either input path request resumption after all controls release and trailing reports drain for 100 ms. The wake gesture is not replayed. This listener sends no device queries; failures are reported and manual resumption remains available. Automated tests cover both input paths, held-control isolation, listener errors, and no background requests while paused; the complete physical wake path still requires hardware verification.
+
 ## 5. Reproduce Without Writing Configuration
 
 ```bash

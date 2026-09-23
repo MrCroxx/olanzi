@@ -406,7 +406,7 @@
 "永不" = "Never";
 "%d 分钟" = "%d minutes";
 "按 Vibe Key 的按键和旋钮操作计算空闲时间，按住期间不会超时。" = "Idle time is based on Vibe Key button and knob activity. Held buttons prevent timeout.";
-"停止保活会暂停 Layer、手势和宏，设备可能恢复自身键位。" = "Stopping keepalive pauses layers, gestures, and macros. The device may return to its own key mappings.";
+"停止保活时暂停 Layer、手势和宏；操作 Vibe Key 并松开后自动恢复，唤醒动作不补发。" = "Pausing keepalive pauses layers, gestures, and macros. Use and release a Vibe Key control to resume automatically; the wake gesture is not replayed.";
 "因空闲已停止保活" = "Keepalive stopped due to inactivity";
 "恢复保活" = "Resume keepalive";
 "有按住的按键时，松开后恢复。" = "Release any held buttons to resume.";
@@ -434,3 +434,5 @@
 "退出" = "Quit";
 "仅在本机保存活动汇总，不记录输入内容。" = "Activity totals stay on this Mac. Typed content is never recorded.";
 "设备概览" = "Device Overview";
+
+"按键唤醒监听不可用，请点击恢复保活：" = "Automatic wake monitoring is unavailable; click Resume Keepalive: ";

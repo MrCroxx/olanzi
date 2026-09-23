@@ -76,6 +76,7 @@ public struct AppLocalizer: Sendable {
     }
 
     private static let diagnosticPrefixes = [
+        "按键唤醒监听不可用，请点击恢复保活：",
         "本机动作配置读取失败，已保留原文件且停止动作执行：", "本机动作配置未更改：",
         "写入未全部完成，部分改动可能已生效。", "无法监听真实 Fn 状态：",
         "Mac Fn 桥接不可用：", "Fn 报文处理失败：", "Fn 松开事件发送失败：",

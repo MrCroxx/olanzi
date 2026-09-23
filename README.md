@@ -28,6 +28,8 @@ The layout covers **all six controls**: three keys, knob press, clockwise
 rotation, and counterclockwise rotation. See each key's single, double, and
 long-press assignments together, without opening a separate editor for every key.
 
+![Six controls with single, double, and long-press assignments](docs/images/layout-en.png)
+
 ### Custom keys, shortcuts, and gestures
 
 Make each control useful for the way you work:
@@ -43,6 +45,8 @@ For example, use a single press to copy, a double press to paste, and the knob
 to move backward or forward through items. Edit a draft, try another mapping,
 or discard your changes before saving.
 
+![Shortcut recording and per-gesture repeat settings](docs/images/shortcuts-en.png)
+
 ### Jump to an app with one press
 
 Assign an app to a key or gesture to bring it to the foreground. If it is not
@@ -52,6 +56,8 @@ chat app one press away.
 Add a local app in **APP**, then assign its **A0**, **A1**, or later keycap.
 The app library keeps these actions reusable across controls and layers.
 App switching can also be the first step of a macro.
+
+![Reusable app actions for Safari, Terminal, and Codex](docs/images/apps-en.png)
 
 ### Record and compose macros
 

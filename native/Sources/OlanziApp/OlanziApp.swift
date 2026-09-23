@@ -89,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     @objc private func resumeHeartbeat() { model.resumeHeartbeat() }
     @objc private func showSettings() {
-        model.page = 3
+        model.page = 1
         showWindow()
     }
     @objc private func showWindow() {

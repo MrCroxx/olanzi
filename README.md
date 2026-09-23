@@ -57,14 +57,17 @@ QMK-style syntax in Code view. Named actions can be reused across your keymap.
 ![Native macro editor with an application switch, a delay, and a keyboard shortcut](docs/images/macros-en.png)
 
 <details>
-<summary><strong>Battery and background operation</strong></summary>
+<summary><strong>Device and app settings</strong></summary>
+
+Open **Settings** for language, device status, keepalive, connection help,
+and saved profiles in one place. Connection help is expanded by default.
 
 See battery and charging status at a glance. Choose when to stop keepalive
 after the device is idle, or leave it on. When keepalive pauses, host layers,
-gestures, and macros pause too; resume from the device page or menu bar.
+gestures, and macros pause too; resume from Settings or the menu bar.
 Closing the window keeps Olanzi running; quitting stops it.
 
-![Device status and the idle keepalive setting](docs/images/device-en.png)
+![Settings with language, device status, keepalive, connection help, and profiles](docs/images/device-en.png)
 
 </details>
 
@@ -91,7 +94,7 @@ for installation, permissions, and signing.
 ### Your settings stay on your Mac
 
 Normal edits save to `~/Library/Application Support/Olanzi/host-keymap.json`.
-They do not rewrite the device's own key table. Use **Profiles** to save,
+They do not rewrite the device's own key table. Use **Settings → Key Profiles** to save,
 export, and import setups; after loading one, save it to activate it.
 Olanzi needs to remain running for host actions to work. Automatic startup
 at login is not configured.

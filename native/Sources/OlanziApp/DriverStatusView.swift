@@ -111,16 +111,19 @@ struct DriverStatusView: View {
                     Label(model.l("统计暂未保存，请检查本地存储。"), systemImage: "exclamationmark.triangle")
                         .font(.caption).foregroundStyle(.orange).help(model.device.usageError ?? "")
                 }
-                Divider()
-                HStack {
-                    Button(action: settings) {
-                        Label(model.l("设置"), systemImage: "gearshape")
-                    }.buttonStyle(OlanziButtonStyle(.primary))
-                    Spacer()
-                    Button(model.l("退出"), action: quit).buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
-                }
                 Text(model.l("仅在本机保存活动汇总，不记录输入内容。"))
                     .font(.system(size: 10)).foregroundStyle(.secondary)
+                Divider()
+                HStack {
+                    Button(model.l("退出"), action: quit).buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button(action: settings) {
+                        Image(systemName: "gearshape")
+                    }
+                    .buttonStyle(OlanziButtonStyle())
+                    .help(model.l("设置"))
+                    .accessibilityLabel(model.l("设置"))
+                }
             }
             .padding(20).frame(width: 380)
             .foregroundStyle(Palette.text).background(Palette.background)

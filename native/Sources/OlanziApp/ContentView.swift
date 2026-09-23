@@ -6,7 +6,6 @@ struct ContentView: View {
     @ObservedObject var model: AppModel
     @State private var profileName = ""
     @State private var showsGestureHelp = false
-    @State private var showsConnectionHelp = true
     var body: some View {
         Group {
             if !model.demo && model.needsPermissionSetup {
@@ -587,7 +586,9 @@ struct ContentView: View {
                 }
             }
             Divider()
-            DisclosureGroup(model.l("连接帮助"), isExpanded: $showsConnectionHelp) {
+            VStack(alignment: .leading, spacing: 10) {
+                Label(model.l("连接帮助"), systemImage: "questionmark.circle")
+                    .font(.headline).accessibilityAddTraits(.isHeader)
                 VStack(alignment: .leading, spacing: 10) {
                     Text(model.l("插入 USB 接收器后会自动连接。设备休眠时，短按电源键唤醒。"))
                     Text(model.l("如果其他工具占用设备，请先退出 Ulanzi Studio 或抓包程序。"))
@@ -598,7 +599,7 @@ struct ContentView: View {
                             Button(model.l("显示 App 位置")) { model.revealApplication() }
                         }
                     }
-                }.font(.body).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
+                }.font(.body).frame(maxWidth: .infinity, alignment: .leading)
             }.font(.body)
         }.padding(18).background(Palette.surface, in: RoundedRectangle(cornerRadius: 10))
     }
@@ -644,6 +645,14 @@ struct ContentView: View {
             }
             Divider()
             HStack(spacing: 15) {
+                if model.page == 1 {
+                    Button { NSApp.terminate(nil) } label: {
+                        Image(systemName: "power").foregroundStyle(.red)
+                    }
+                    .buttonStyle(OlanziButtonStyle())
+                    .help(model.l("退出 Olanzi"))
+                    .accessibilityLabel(model.l("退出 Olanzi"))
+                }
                 if model.applying {
                     ProgressView().controlSize(.small)
                     Text(model.l("正在保存…")).font(.body)

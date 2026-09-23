@@ -26,8 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.setActivationPolicy(.accessory)
         model = AppModel(demo: CommandLine.arguments.contains("--demo"))
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "Olanzi")
-        statusItem.button?.image?.isTemplate = true
+        statusItem.button?.image = VibeKeyIcon.image
         statusItem.button?.target = self
         statusItem.button?.action = #selector(togglePopover)
         popover.behavior = .transient

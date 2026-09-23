@@ -35,7 +35,8 @@ struct DriverStatusView: View {
             let today = days.last!
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    Image(systemName: "slider.horizontal.3").font(.title2).foregroundStyle(Palette.accent)
+                    Image(nsImage: VibeKeyIcon.image).resizable().scaledToFit()
+                        .frame(width: 24, height: 24).foregroundStyle(Palette.accent)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Olanzi").font(.headline)
                         Text(model.l("后台设备服务")).font(.caption).foregroundStyle(.secondary)

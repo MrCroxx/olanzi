@@ -49,6 +49,9 @@ private final class IdleTestSnapshots: @unchecked Sendable {
 private final class IdleTestTransport: DeviceTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var allowed = false
+    private var softwareOnline = false
+    private var onlineFailure: Bool?
+    private var wireOperations: [String] = []
     private var sent = 0
     private var onlineQueries = 0
     private var batteryReads = 0
@@ -67,10 +70,22 @@ private final class IdleTestTransport: DeviceTransport, @unchecked Sendable {
     var heartbeatCount: Int { lock.withLock { sent } }
     var requestCounts: [Int] { lock.withLock { [sent, onlineQueries, batteryReads, keyReads] } }
     var pumpCount: Int { lock.withLock { pumps } }
+    var traffic: [String] { lock.withLock { wireOperations } }
+    func failSoftwareOnline(_ value: Bool?) { lock.withLock { onlineFailure = value } }
+    func setSoftwareOnline(_ online: Bool) throws {
+        try lock.withLock {
+            wireOperations.append(online ? "online" : "offline")
+            if onlineFailure == online { throw DeviceProtocolError.message("测试在线模式切换失败") }
+            softwareOnline = online
+        }
+    }
     func setOnline(_ value: Bool?) { lock.withLock { online = value } }
     func enqueue(_ operation: @escaping () -> Void) { lock.withLock { operations.append(operation) } }
     func open() throws { heartbeatEnabled = false }
-    func close() { heartbeatEnabled = false }
+    func close() {
+        heartbeatEnabled = false
+        lock.withLock { softwareOnline = false; wireOperations.append("close") }
+    }
     func pump(for duration: TimeInterval) throws {
         let work = lock.withLock { () -> [() -> Void] in
             pumps += 1
@@ -80,7 +95,9 @@ private final class IdleTestTransport: DeviceTransport, @unchecked Sendable {
         work.forEach { $0() }
         onPump?()
         lock.withLock {
-            if allowed { sent += 1; lastSent = Date() }
+            if allowed && softwareOnline {
+                sent += 1; lastSent = Date(); wireOperations.append("heartbeat")
+            }
         }
     }
     func queryOnline() throws -> Bool {
@@ -171,6 +188,116 @@ final class HeartbeatIdleTests: XCTestCase {
         _ = try XCTUnwrap(harness.snapshots.wait(after: mark) {
             $0.heartbeatPausedForInactivity && !$0.heartbeatEnabled && !$0.fn.active
         })
+    }
+
+    func testIdleHandoffSendsOfflineOnceAndDoesNotWriteFromInputCallbacks() throws {
+        let harness = try start()
+        defer { stop(harness) }
+        XCTAssertEqual(harness.transport.traffic.filter { $0 == "online" }.count, 1)
+        perform(harness) {
+            let before = harness.transport.traffic.count
+            harness.clock.set(1_010)
+            harness.transport.onPump?()
+            XCTAssertFalse(harness.transport.heartbeatEnabled)
+            XCTAssertEqual(harness.transport.traffic.count, before)
+        }
+        _ = try XCTUnwrap(harness.snapshots.wait { $0.heartbeatPausedForInactivity })
+        perform(harness) {}
+        let traffic = harness.transport.traffic
+        XCTAssertEqual(traffic.filter { $0 == "offline" }.count, 1)
+        advance(harness, to: 1_100)
+        perform(harness) {}
+        XCTAssertEqual(harness.transport.traffic, traffic)
+    }
+
+    func testNativeReleaseReentersOnlineModeBeforeFirstResumedHeartbeat() throws {
+        let harness = try start()
+        defer { stop(harness) }
+        try pause(harness)
+        perform(harness) {}
+        let pausedTraffic = harness.transport.traffic
+        perform(harness) { harness.wakeMonitor.onActivity?(true) }
+        advance(harness, to: 1_020)
+        XCTAssertEqual(harness.transport.traffic, pausedTraffic)
+        perform(harness) {
+            let before = harness.transport.traffic.count
+            harness.wakeMonitor.onActivity?(false)
+            XCTAssertEqual(harness.transport.traffic.count, before)
+        }
+        let mark = harness.snapshots.count
+        advance(harness, to: 1_020.2)
+        _ = try XCTUnwrap(harness.snapshots.wait(after: mark) { $0.heartbeatEnabled && $0.lastHeartbeat != nil })
+        let resumedTraffic = Array(harness.transport.traffic.dropFirst(pausedTraffic.count))
+        XCTAssertEqual(resumedTraffic.first, "online")
+        XCTAssertTrue(resumedTraffic.contains("heartbeat"))
+        XCTAssertEqual(resumedTraffic.filter { $0 == "online" }.count, 1)
+        XCTAssertTrue(harness.events.presses.isEmpty)
+    }
+
+    func testDisconnectAndSystemSleepReleaseOnlineModeBeforeClosingTransport() throws {
+        let harness = try start()
+        defer { stop(harness) }
+        var mark = harness.snapshots.count
+        harness.service.disconnect()
+        _ = try XCTUnwrap(harness.snapshots.completed(after: mark) { !$0.connected })
+        XCTAssertEqual(Array(harness.transport.traffic.suffix(2)), ["offline", "close"])
+        mark = harness.snapshots.count
+        harness.service.connect()
+        _ = try XCTUnwrap(harness.snapshots.completed(after: mark) { $0.heartbeatEnabled })
+        mark = harness.snapshots.count
+        harness.service.suspendForSystemSleep()
+        _ = try XCTUnwrap(harness.snapshots.completed(after: mark) { !$0.connected })
+        XCTAssertEqual(Array(harness.transport.traffic.suffix(2)), ["offline", "close"])
+    }
+
+    func testStopReleasesOnlineModeBeforeClosingTransport() throws {
+        let harness = try start()
+        stop(harness)
+        XCTAssertEqual(Array(harness.transport.traffic.suffix(2)), ["offline", "close"])
+    }
+
+    func testOfflineHandoffFailureSurfacesAndNeverRestartsHeartbeatAutomatically() throws {
+        let harness = try start()
+        defer { stop(harness) }
+        harness.transport.failSoftwareOnline(false)
+        let mark = harness.snapshots.count
+        try pause(harness)
+        _ = try XCTUnwrap(harness.snapshots.wait(after: mark) {
+            $0.error?.contains("测试在线模式切换失败") == true && !$0.heartbeatEnabled
+        })
+        let counts = harness.transport.requestCounts
+        advance(harness, to: 1_100)
+        perform(harness) {}
+        XCTAssertFalse(harness.transport.heartbeatEnabled)
+        XCTAssertEqual(harness.transport.requestCounts, counts)
+        XCTAssertEqual(harness.transport.traffic.filter { $0 == "offline" }.count, 1)
+    }
+
+    func testResumeOnlineFailureKeepsHeartbeatDisabledAndReportsError() throws {
+        let harness = try start()
+        defer { stop(harness) }
+        try pause(harness)
+        perform(harness) {}
+        harness.transport.failSoftwareOnline(true)
+        let count = harness.transport.heartbeatCount
+        let mark = harness.snapshots.count
+        harness.service.resumeHeartbeat()
+        _ = try XCTUnwrap(harness.snapshots.wait(after: mark) {
+            $0.error?.contains("测试在线模式切换失败") == true && !$0.heartbeatEnabled
+        })
+        perform(harness) {}
+        XCTAssertFalse(harness.transport.heartbeatEnabled)
+        XCTAssertEqual(harness.transport.heartbeatCount, count)
+        let attempts = harness.transport.traffic.filter { $0 == "online" }.count
+        perform(harness) {}
+        XCTAssertEqual(harness.transport.traffic.filter { $0 == "online" }.count, attempts)
+        harness.transport.failSoftwareOnline(nil)
+        let retryMark = harness.snapshots.count
+        harness.service.resumeHeartbeat()
+        _ = try XCTUnwrap(harness.snapshots.wait(after: retryMark) {
+            $0.error == nil && $0.heartbeatEnabled && $0.lastHeartbeat != nil
+        })
+        XCTAssertEqual(harness.transport.traffic.filter { $0 == "online" }.count, attempts + 1)
     }
 
     func testTimerDefaultsToNeverAndRejectsInvalidTimeouts() {

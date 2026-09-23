@@ -26,6 +26,10 @@ public enum DeviceProtocol {
     public static let reportID: UInt8 = 0x55
     public static let defaultCodes: [UInt8] = [0x01, 0x28, 0x29, 0x46, 0x4F, 0x2A]
     public static let heartbeat: [UInt8] = [0x06, 0x01, 0x23, 0x00, 0x01]
+    /// VibeKey Lite 的主机接管协议；与设备本体在线查询独立。
+    public static func softwareOnline(_ online: Bool) -> [UInt8] {
+        [0x01, 0x01, 0x10, 0x00, online ? 0x03 : 0x00]
+    }
     public static let onlineRequest: [UInt8] = [0x06, 0x03, 0x0A, 0x01]
     public static let batteryRequest: [UInt8] = [0x01, 0x01, 0x02, 0x01]
     private static let key: [UInt32] = [0xCAA5BACA, 0xBC2A8A6D, 0xCA5A9EBA, 0x9BB88BCA]

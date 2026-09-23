@@ -82,6 +82,7 @@ private final class UsageTestTransport: DeviceTransport {
     var onKeyEvent: ((VendorKeyEvent) -> Void)?
     var onPump: (() -> Void)?
     private var pumps = 0
+    func setSoftwareOnline(_ online: Bool) throws {}
     func open() throws {}
     func close() {}
     func pump(for duration: TimeInterval) throws {

@@ -48,6 +48,17 @@ final class ProtocolTests: XCTestCase {
         }
     }
 
+    func testSoftwareOnlineHandoffUsesDistinctVolatileControlReport() throws {
+        for (online, expected) in [(true, [UInt8](arrayLiteral: 0x01, 0x01, 0x10, 0x00, 0x03)),
+                                   (false, [UInt8](arrayLiteral: 0x01, 0x01, 0x10, 0x00, 0x00))] {
+            let request = DeviceProtocol.softwareOnline(online)
+            XCTAssertEqual(request, expected)
+            let report = try DeviceProtocol.encodeReport(request)
+            let decoded = try XCTUnwrap(DeviceProtocol.decodeReport(reportID: 0x55, bytes: report))
+            XCTAssertEqual(Array(decoded.prefix(5)), expected)
+        }
+    }
+
     func testOnlineStatusUsesExplicitByteNotHeartbeatACK() throws {
         XCTAssertEqual(DeviceProtocol.heartbeat, [6, 1, 0x23, 0, 1])
         XCTAssertTrue(try DeviceProtocol.parseOnline([6, 3, 0x0A, 0x11, 1]))
@@ -107,6 +118,7 @@ private final class FakeTransport: DeviceTransport {
     var queryCount = 0
     var failSecondQuery = false
     var lastHeartbeat: Date? = Date()
+    func setSoftwareOnline(_ online: Bool) throws {}
     func open() throws { mainThreadCalls.append(Thread.isMainThread); openCount += 1 }
     func close() { mainThreadCalls.append(Thread.isMainThread); closed = true }
     func pump(for duration: TimeInterval) throws {

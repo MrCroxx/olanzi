@@ -82,6 +82,10 @@ The earlier conclusion that keys use standard HID without Studio applies only to
 
 [CONFIRMED] Subsequent user feedback was that the device lights came on but configured actions did not respond; the running UI still showed an idle keepalive pause. The pause latch required manual resumption, vendor input did not clear it, and returned standard HID input was not monitored. The fix adds an AU05-specific passive standard input listener and lets physical activity on either input path request resumption after all controls release and trailing reports drain for 100 ms. The wake gesture is not replayed. This listener sends no device queries; failures are reported and manual resumption remains available. Automated tests cover both input paths, held-control isolation, listener errors, and no background requests while paused; the complete physical wake path still requires hardware verification.
 
+[CONFIRMED] Explicit software online/offline handoff is implemented following the [VibeKey Lite protocol record](https://github.com/arumwu/vibekey-lite/blob/43fb9017790838c454fc2159f3608d576c5c6e3a/docs/protocol.md#L377-L404). Idle pause follows the VibeKey Lite host-control handoff: after stopping heartbeats, synchronously send `01 01 10 00 00` (software offline); when resuming, send `01 01 10 00 03` (software online) successfully before allowing heartbeats. All writes run serially on the device worker, outside HID callbacks. Disconnect, quit, and Mac sleep also attempt to return control; a failed handoff reports an error and stops host control until Resume Keepalive retries it. This flow does not change stored lighting, standby, or sleep settings. Knob-light shutoff and actual sleep timing still require hardware verification.
+
+[INFERRED] Explicitly returning control may be more reliable than waiting for a heartbeat timeout alone; no local hardware measurement yet establishes immediate knob-light shutoff or its effect on sleep timing.
+
 ## 5. Reproduce Without Writing Configuration
 
 ```bash

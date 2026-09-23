@@ -52,7 +52,7 @@ struct DriverStatusView: View {
                     HStack {
                         Text(model.l(model.device.heartbeatPausedForInactivity ? "因空闲已停止保活" : model.device.heartbeatEnabled ? "心跳运行中" : "心跳已暂停"))
                         Spacer()
-                        if model.device.heartbeatPausedForInactivity {
+                        if model.device.heartbeatPausedForInactivity || model.device.controlHandoffFailed {
                             Button(model.l("恢复保活")) { model.resumeHeartbeat() }
                         } else {
                             Button(model.l(model.device.connected ? "断开设备" : "连接设备")) {

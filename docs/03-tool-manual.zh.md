@@ -255,7 +255,7 @@ python3 vibekey.py --poll 2 --log ~/vibekey.log
 | 屏幕被按键字符冲乱 | 终端回显 | 默认已关闭；如果你用 `--echo` 就会出现 |
 | 键 1 按了没反应 | **它是无效码 `0x01`** | 用 `--set-key 0=F13` 改成有用的键 |
 | 改了键没生效 | 读回确认失败 | 重跑 `--keys` 看配置表；必要时 `--set-key` 再写一次 |
-| `--keys` 六个控件全是 `(无回复)` | **Vibe Key 本体没开机**（dongle 是好的） | 按一下设备电源键唤醒它；原理见 [02 §4](02-vibekey-protocol.zh.md) |
+| `--keys` 六个控件全是 `(无回复)` | **Vibe Key 本体没开机**（dongle 是好的） | 长按设备电源键开机；原理见 [02 §4](02-vibekey-protocol.zh.md) |
 
 ### 应急恢复
 

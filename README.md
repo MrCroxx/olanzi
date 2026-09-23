@@ -96,7 +96,7 @@ Clicking a layer number selects the layout to edit.
 - **Profiles you can keep.** Save named setups for different tasks. Export and
   import JSON profiles to move your configuration between Macs.
 - **Background operation.** Close the window and keep using your saved actions.
-  Reopen it from the menu bar or Dock when you want to make a change.
+  The Dock icon hides when you close the window. Reopen it from the menu bar when you want to make a change.
 - **Battery and idle controls.** See battery and charging status, choose an
   idle keepalive timeout, and resume from Settings or the menu bar. Pausing
   keepalive also pauses host layers, gestures, and macros.

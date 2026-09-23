@@ -771,7 +771,7 @@ def probe(handles, pump, mon=None):
         print()
         print(red(bold("  ⚠ Vibe Key 本体没有应答，只有 dongle 在回话。")))
         print(red("     设备可能已关机 / 休眠 / 超出无线范围。"))
-        print(f"     请按一下 Vibe Key 的{cyan('电源键')}唤醒它，再跑一次。")
+        print(f"     请长按 Vibe Key 的{cyan('电源键')}开机，再跑一次。")
         print(dim("     （dongle 已正常枚举、私有协议也通，不是权限或工具的问题）"))
 
 
@@ -942,7 +942,7 @@ def show_keys(handles, mon):
     print()
     if got == 0:
         print(red(bold("  ⚠ 六个控件全都没有应答 —— Vibe Key 本体可能没开机。")))
-        print(f"     请按一下 Vibe Key 的{cyan('电源键')}唤醒它，再跑一次。")
+        print(f"     请长按 Vibe Key 的{cyan('电源键')}开机，再跑一次。")
         print(dim("     （按键配置存在设备里，设备关机当然读不到；"))
         print(dim("       dongle 会照常枚举，所以 --list 看起来一切正常）"))
         print()

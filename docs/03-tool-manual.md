@@ -255,7 +255,7 @@ python3 vibekey.py --poll 2 --log ~/vibekey.log
 | The screen is scrambled by key characters | Terminal echo | Off by default; it appears only if you use `--echo` |
 | Key 1 does nothing when pressed | **It is the invalid code `0x01`** | Use `--set-key 0=F13` to change it to a useful key |
 | A key change did not take effect | The read-back confirmation failed | Re-run `--keys` to inspect the configuration table; if necessary, write it again with `--set-key` |
-| `--keys` shows `(无回复)` for all six controls | **The Vibe Key itself is powered off** (the dongle is fine) | Press the device's power button to wake it; see [02 §4](02-vibekey-protocol.md) for why |
+| `--keys` shows `(无回复)` for all six controls | **The Vibe Key itself is powered off** (the dongle is fine) | Press and hold the device's power button to turn it on; see [02 §4](02-vibekey-protocol.md) for why |
 
 ### Emergency recovery
 

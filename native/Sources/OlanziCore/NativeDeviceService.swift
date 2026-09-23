@@ -329,7 +329,7 @@ public final class NativeDeviceService: @unchecked Sendable {
             // 离线清掉可能丢失 up 的物理按住状态，但保持空闲暂停原因。
             heartbeatIdleTimer.reset(at: idleClock())
             clearBattery()
-            state.error = "接收器已连接，但 Vibe Key 本体离线，请短按电源键唤醒。"
+            state.error = "接收器已连接，但 Vibe Key 本体离线，请长按电源键开机。"
         } else if state.online == true && (wasOnline != true || state.keys.isEmpty) {
             if wasOnline != true { nextBatteryCheck = 0 }
             try refreshKeys()

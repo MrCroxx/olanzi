@@ -115,7 +115,12 @@ struct DriverStatusView: View {
                     .font(.system(size: 10)).foregroundStyle(.secondary)
                 Divider()
                 HStack {
-                    Button(model.l("退出"), action: quit).buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+                    Button(action: quit) {
+                        Image(systemName: "power").foregroundStyle(.red)
+                    }
+                    .buttonStyle(OlanziButtonStyle())
+                    .help(model.l("退出 Olanzi"))
+                    .accessibilityLabel(model.l("退出 Olanzi"))
                     Spacer()
                     Button(action: settings) {
                         Image(systemName: "gearshape")

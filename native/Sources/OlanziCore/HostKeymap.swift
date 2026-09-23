@@ -317,6 +317,8 @@ public struct HostKeymap: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         version = try values.decode(Int.self, forKey: .version)
+        // 新版动作可能无法解码，先报告版本不兼容，避免误报配置损坏。
+        guard (1...5).contains(version) else { throw HostKeymapError.unsupportedVersion }
         controls = try values.decode([ControlActionMap].self, forKey: .controls)
         actionLibrary = try values.decodeIfPresent([NamedHostAction].self, forKey: .actionLibrary) ?? []
         layers = try values.decodeIfPresent([HostLayer].self, forKey: .layers) ?? []

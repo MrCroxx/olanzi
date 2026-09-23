@@ -57,6 +57,25 @@ final class HostKeymapStoreTests: XCTestCase {
         XCTAssertNotEqual(try Data(contentsOf: url), before)
     }
 
+    func testFutureSchemaReportsVersionBeforeDecodingUnknownActionsAndPreservesFile() throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(keymap())) as? [String: Any])
+        object["version"] = 6
+        var controls = try XCTUnwrap(object["controls"] as? [[String: Any]])
+        controls[0]["pressAction"] = ["futureAction": ["_0": 2]]
+        object["controls"] = controls
+        let bytes = try JSONSerialization.data(withJSONObject: object)
+        try bytes.write(to: url)
+        let store = HostKeymapStore(url: url)
+        XCTAssertThrowsError(try store.load()) {
+            XCTAssertEqual($0 as? HostKeymapError, .unsupportedVersion)
+        }
+        XCTAssertThrowsError(try store.save(keymap())) {
+            XCTAssertEqual($0 as? HostKeymapError, .unsupportedVersion)
+        }
+        XCTAssertEqual(try Data(contentsOf: url), bytes)
+    }
+
     func testUnwritableDirectoryLeavesExistingFileIntact() throws {
         guard geteuid() != 0 else { throw XCTSkip("root 可绕过目录写权限。") }
         let store = HostKeymapStore(url: url)

@@ -644,6 +644,14 @@ struct ContentView: View {
             }
             Divider()
             HStack(spacing: 15) {
+                if model.page == 1 {
+                    Button { NSApp.terminate(nil) } label: {
+                        Image(systemName: "power").foregroundStyle(.red)
+                    }
+                    .buttonStyle(OlanziButtonStyle())
+                    .help(model.l("退出 Olanzi"))
+                    .accessibilityLabel(model.l("退出 Olanzi"))
+                }
                 if model.applying {
                     ProgressView().controlSize(.small)
                     Text(model.l("正在保存…")).font(.body)

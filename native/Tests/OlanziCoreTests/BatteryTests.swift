@@ -19,6 +19,7 @@ private final class BatteryServiceFixture: DeviceTransport, @unchecked Sendable 
     var counts: (Int, Int) { lock.withLock { (reads, posts) } }
     func advance(to time: TimeInterval, failure: Bool) { lock.withLock { self.time = time; self.failure = failure } }
     func recordPost() { lock.withLock { posts += 1 } }
+    func setSoftwareOnline(_ online: Bool) throws {}
     func open() throws {}
     func close() { heartbeatEnabled = false }
     func pump(for duration: TimeInterval) throws { onPump?() }

@@ -28,7 +28,16 @@ public final class NativeDeviceService: @unchecked Sendable {
     private let batteryClock: () -> TimeInterval
     private let idleClock: () -> TimeInterval
     private var heartbeatIdleTimer = HeartbeatIdleTimer()
+    private var softwareOnline: Bool?
+    private var softwareOnlineError: String?
     private var heartbeatResumeRequested = false
+    private var heartbeatResumeNotBefore: TimeInterval?
+    private let wakeMonitorFactory: () -> DeviceWakeMonitoring?
+    private var wakeMonitor: DeviceWakeMonitoring?
+    private var wakeMonitorOpened = false
+    private var wakeHeld = false
+    private var wakeMonitorError: String?
+    private var nextWakeMonitorRetry: TimeInterval = 0
     private enum ConfigurationState { case notLoaded, missing, ready, invalidFile }
     private var configurationState = ConfigurationState.notLoaded
     private var hostConfigurationError: String?
@@ -56,7 +65,7 @@ public final class NativeDeviceService: @unchecked Sendable {
         self.init(demo: demo, transportFactory: {
             if demo { return DemoHIDTransport() }
             return MacHIDTransport()
-        }, heartbeatIdleTimeout: heartbeatIdleTimeout, usageStore: demo ? nil : UsageStatisticsStore(), onChange: onChange)
+        }, heartbeatIdleTimeout: heartbeatIdleTimeout, wakeMonitorFactory: { demo ? nil : MacDeviceWakeMonitor() }, usageStore: demo ? nil : UsageStatisticsStore(), onChange: onChange)
     }
 
     init(demo: Bool, transportFactory: @escaping () -> DeviceTransport,
@@ -66,8 +75,10 @@ public final class NativeDeviceService: @unchecked Sendable {
          batteryClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          heartbeatIdleTimeout: TimeInterval? = nil,
          idleClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+         wakeMonitorFactory: @escaping () -> DeviceWakeMonitoring? = { nil },
          usageStore: UsageStatisticsStore? = nil,
          onChange: @escaping @Sendable (DeviceSnapshot) -> Void) {
+        self.wakeMonitorFactory = wakeMonitorFactory
         self.usageStore = demo ? nil : usageStore
         self.demo = demo
         self.transportFactory = transportFactory
@@ -149,6 +160,8 @@ public final class NativeDeviceService: @unchecked Sendable {
 
     private func run() {
         transport = transportFactory()
+        wakeMonitor = wakeMonitorFactory()
+        wakeMonitor?.onActivity = { [weak self] held in self?.receiveWakeActivity(held: held) }
         if !demo { bridge = bridgeFactory() }
         transport?.onKeyEvent = { [weak self] event in self?.receiveInput(event) }
         transport?.onPump = { [weak self] in self?.pumpInput() }
@@ -253,7 +266,14 @@ public final class NativeDeviceService: @unchecked Sendable {
             state.error = message
             nextConnect = now + 2
         }
-        if state.connected && now >= nextCheck {
+        // 先处理监听故障，不能把丢失的松开报文当作已释放。
+        synchronizeWakeMonitor()
+        // 自动恢复仅在外层循环执行，不能从 HID 回调重入查询或关闭回调缓冲区。
+        finishHeartbeatResumeIfReleased()
+        // 停止保活必须同时停止后台查询，给固件留下真正无请求的空闲窗口。
+        // 仍泵送接收回调，以处理 USB 拔出和物理松开；显式刷新不受此限制。
+        checkHeartbeatIdleTimeout()
+        if state.connected && !state.heartbeatPausedForInactivity && now >= nextCheck {
             nextCheck = now + 2
             do { try checkOnline() }
             catch {
@@ -269,6 +289,8 @@ public final class NativeDeviceService: @unchecked Sendable {
             for event in events { receiveInput(event) }
             state.fn = bridge?.status ?? state.fn
         }
+        synchronizeWakeMonitor()
+        synchronizeSoftwareOnline()
         publish()
     }
 
@@ -277,6 +299,8 @@ public final class NativeDeviceService: @unchecked Sendable {
         if !state.connected {
             try transport.open()
             state.connected = true
+            softwareOnline = nil
+            softwareOnlineError = nil
             resetHeartbeatIdleTimer()
             nextBatteryCheck = 0
             if !demo && backgroundActivity == nil {
@@ -313,7 +337,9 @@ public final class NativeDeviceService: @unchecked Sendable {
     }
 
     private func refreshBatteryIfDue() {
-        guard state.connected, state.online == true, !isInputSuspended, let transport else { return }
+        checkHeartbeatIdleTimeout()
+        guard state.connected, state.online == true, !isInputSuspended,
+              !state.heartbeatPausedForInactivity, let transport else { return }
         let now = batteryClock()
         guard now >= nextBatteryCheck else { return }
         // 电量是低频遥测，失败也等下个周期；查询沿用 transport 的输入和心跳泵送。
@@ -394,10 +420,18 @@ public final class NativeDeviceService: @unchecked Sendable {
 
     private func disconnectDevice(at date: Date = Date()) {
         suspendUsage(at: date)
+        closeWakeMonitor()
         transport?.heartbeatEnabled = false
         bridge?.synchronize(configuration: state.hostKeymap, connected: false, online: nil)
         bridge?.close()
         state.fn = bridge?.status ?? FnStatus()
+        var handoffError: String?
+        if state.connected && softwareOnline != false {
+            do { try transport?.setSoftwareOnline(false) }
+            catch { handoffError = "退出主机控制失败：" + error.localizedDescription }
+        }
+        softwareOnline = nil
+        softwareOnlineError = nil
         transport?.close()
         if let activity = backgroundActivity {
             ProcessInfo.processInfo.endActivity(activity)
@@ -413,38 +447,44 @@ public final class NativeDeviceService: @unchecked Sendable {
         state.lastHeartbeat = nil
         state.heartbeatEnabled = false
         resetHeartbeatIdleTimer()
-        state.error = nil
+        state.error = handoffError
     }
 
     private func synchronizeFn() {
         // 运行时只使用成功持久化的本机动作；设备回读始终与本机配置独立。
         checkHeartbeatIdleTimeout()
-        let enabled = state.connected && !isInputSuspended && !state.heartbeatPausedForInactivity && state.hostKeymap != nil
+        let enabled = state.connected && !isInputSuspended && softwareOnlineError == nil && !state.heartbeatPausedForInactivity && state.hostKeymap != nil
         guard let bridge = bridge else {
             state.fn = FnStatus(enabled: enabled)
             updateHeartbeat()
             return
         }
         bridge.synchronize(configuration: state.hostKeymap, connected: state.connected && !isInputSuspended,
-                           online: state.heartbeatPausedForInactivity ? nil : state.online)
+                           online: state.heartbeatPausedForInactivity || softwareOnlineError != nil ? nil : state.online)
         bridge.pump()
         state.fn = bridge.status
         updateHeartbeat()
     }
 
     private func requestHeartbeatResume() {
+        softwareOnlineError = nil
+        heartbeatResumeNotBefore = nil
         heartbeatResumeRequested = true
         finishHeartbeatResumeIfReleased()
     }
 
     private func finishHeartbeatResumeIfReleased() {
-        guard heartbeatResumeRequested, !heartbeatIdleTimer.hasHeldControls else { return }
+        guard heartbeatResumeRequested, !isInputSuspended, !heartbeatIdleTimer.hasHeldControls, !wakeHeld,
+              heartbeatResumeNotBefore.map({ idleClock() >= $0 }) ?? true else { return }
+        heartbeatResumeNotBefore = nil
+        nextCheck = 0
         heartbeatIdleTimer.restart(at: idleClock())
         heartbeatResumeRequested = false
         state.heartbeatPausedForInactivity = false
     }
 
     private func resetHeartbeatIdleTimer() {
+        heartbeatResumeNotBefore = nil
         heartbeatResumeRequested = false
         heartbeatIdleTimer.reset(at: idleClock())
         state.heartbeatPausedForInactivity = false
@@ -463,10 +503,29 @@ public final class NativeDeviceService: @unchecked Sendable {
     private func updateHeartbeat() {
         checkHeartbeatIdleTimeout()
         let ready = demo ? state.hostKeymap != nil && state.online == true : bridge?.status.active == true
-        let enabled = state.connected && !isInputSuspended && !state.heartbeatPausedForInactivity && ready
+        let enabled = state.connected && !isInputSuspended && softwareOnlineError == nil && !state.heartbeatPausedForInactivity && ready
         transport?.heartbeatEnabled = enabled
         state.heartbeatEnabled = enabled
         state.lastHeartbeat = enabled ? transport?.lastHeartbeat : nil
+    }
+
+    /// 只在外层 worker 调用：HID 回调仅改变意图，不重入设备写入。
+    private func synchronizeSoftwareOnline() {
+        guard state.connected, softwareOnlineError == nil, let transport else { return }
+        let desired = state.heartbeatEnabled
+        guard softwareOnline != desired else { return }
+        do {
+            try transport.setSoftwareOnline(desired)
+            softwareOnline = desired
+        } catch {
+            softwareOnline = nil
+            softwareOnlineError = "主机控制交接失败，请点击恢复保活重试：" + error.localizedDescription
+            transport.heartbeatEnabled = false
+            state.heartbeatEnabled = false
+            state.lastHeartbeat = nil
+            bridge?.synchronize(configuration: state.hostKeymap, connected: true, online: nil)
+            state.fn = bridge?.status ?? FnStatus()
+        }
     }
 
     private var isInputSuspended: Bool {
@@ -488,18 +547,66 @@ public final class NativeDeviceService: @unchecked Sendable {
             updateHeartbeat()
             return
         }
-        // 暂停后的首个厂商事件可能已由标准 HID 直出，不用它自动恢复或重放。
+        // 唤醒手势可能已由标准 HID 直出；只记录恢复请求，整组松开后才切回主机转发。
+        if state.connected && state.heartbeatPausedForInactivity && (0..<6).contains(event.index) {
+            if event.pressed || heartbeatResumeRequested { requestAutomaticHeartbeatResume() }
+        }
         // 查询暂时失败时仍消费松开，避免恢复在线后残留 held 导致永不空闲。
-        if state.connected && (state.online == true || !event.pressed) {
+        if state.connected && (state.online == true || state.heartbeatPausedForInactivity || !event.pressed) {
             usage.receive(event, at: Date())
             heartbeatIdleTimer.receive(event, at: idleClock())
         }
         bridge?.receive(event)
-        if heartbeatResumeRequested && !heartbeatIdleTimer.hasHeldControls {
+        if heartbeatResumeRequested && heartbeatResumeNotBefore == nil && !heartbeatIdleTimer.hasHeldControls {
             finishHeartbeatResumeIfReleased()
             synchronizeFn()
         }
         updateHeartbeat()
+    }
+
+    private func requestAutomaticHeartbeatResume() {
+        // 两个输入接口的同一组 down/up 可能稍有错位，留出短暂排空窗口，避免双发。
+        guard !heartbeatResumeRequested || heartbeatResumeNotBefore != nil else { return }
+        heartbeatResumeRequested = true
+        heartbeatResumeNotBefore = idleClock() + 0.1
+    }
+
+    private func receiveWakeActivity(held: Bool) {
+        guard state.connected, state.heartbeatPausedForInactivity, !isInputSuspended else { return }
+        wakeHeld = held
+        requestAutomaticHeartbeatResume()
+    }
+
+    private func closeWakeMonitor() {
+        wakeMonitor?.close()
+        wakeMonitorOpened = false
+        wakeHeld = false
+        wakeMonitorError = nil
+        nextWakeMonitorRetry = 0
+    }
+
+    private func synchronizeWakeMonitor() {
+        guard state.connected, state.heartbeatPausedForInactivity, !isInputSuspended else {
+            if wakeMonitorOpened { closeWakeMonitor() }
+            return
+        }
+        guard let wakeMonitor else { return }
+        if let error = wakeMonitor.error {
+            heartbeatResumeRequested = false
+            heartbeatResumeNotBefore = nil
+            closeWakeMonitor()
+            wakeMonitorError = error
+            nextWakeMonitorRetry = idleClock() + 2
+        }
+        guard !wakeMonitorOpened, idleClock() >= nextWakeMonitorRetry else { return }
+        nextWakeMonitorRetry = idleClock() + 2
+        do {
+            try wakeMonitor.open()
+            wakeMonitorOpened = true
+            wakeMonitorError = nil
+        } catch {
+            wakeMonitorError = error.localizedDescription
+        }
     }
 
     private func pumpInput() {
@@ -610,6 +717,11 @@ public final class NativeDeviceService: @unchecked Sendable {
         }
         var snapshot = state
         // 设备查询成功不能抹掉损坏文件或保存失败；用户必须始终看得到这个错误。
+        if let wakeMonitorError, state.heartbeatPausedForInactivity {
+            snapshot.error = "按键唤醒监听不可用，请点击恢复保活：" + wakeMonitorError
+        }
+        snapshot.controlHandoffFailed = softwareOnlineError != nil
+        if let softwareOnlineError { snapshot.error = softwareOnlineError }
         if let hostConfigurationError { snapshot.error = hostConfigurationError }
         guard snapshot != lastPublished else { return }
         lastPublished = snapshot

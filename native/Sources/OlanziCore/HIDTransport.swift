@@ -9,6 +9,7 @@ protocol DeviceTransport: AnyObject {
     var onPump: (() -> Void)? { get set }
     func open() throws
     func close()
+    func setSoftwareOnline(_ online: Bool) throws
     func pump(for duration: TimeInterval) throws
     func queryOnline() throws -> Bool
     func readBattery() throws -> DeviceBattery
@@ -34,6 +35,7 @@ final class MacHIDTransport: DeviceTransport {
     }
     var onKeyEvent: ((VendorKeyEvent) -> Void)?
     var onPump: (() -> Void)?
+    private var softwareOnline = false
     private var device: IOHIDDevice?
     private var runLoop: CFRunLoop?
     private var buffer: UnsafeMutablePointer<UInt8>?
@@ -118,6 +120,7 @@ final class MacHIDTransport: DeviceTransport {
     }
 
     func close() {
+        softwareOnline = false
         heartbeatEnabled = false
         if let device = device {
             if let buffer = buffer { IOHIDDeviceRegisterInputReportCallback(device, buffer, 512, nil, nil) }
@@ -147,13 +150,20 @@ final class MacHIDTransport: DeviceTransport {
         // 查询等待期间也推进手势计时；回调不得重新进入设备查询或写入。
         onPump?()
         // 心跳会关闭标准 HID 直出，只有主机已经能接管输入时才允许发送。
-        guard device != nil, heartbeatEnabled else { return }
+        guard device != nil, heartbeatEnabled, softwareOnline else { return }
         if ProcessInfo.processInfo.systemUptime >= nextHeartbeat {
             // 心跳没有已确认的 ACK，不据成功发送推断设备本体在线。
             try send(DeviceProtocol.heartbeat)
             lastHeartbeat = Date()
             nextHeartbeat = ProcessInfo.processInfo.systemUptime + 1
         }
+    }
+
+    func setSoftwareOnline(_ online: Bool) throws {
+        // 同一 worker 同步发送，无独立心跳队列；离线后不能再发送残留心跳。
+        if !online { heartbeatEnabled = false; softwareOnline = false }
+        try send(DeviceProtocol.softwareOnline(online))
+        softwareOnline = online
     }
 
     func queryOnline() throws -> Bool {
@@ -242,6 +252,7 @@ final class DemoHIDTransport: DeviceTransport {
     func pump(for duration: TimeInterval) throws {
         if opened, heartbeatEnabled, Date().timeIntervalSince(lastHeartbeat ?? .distantPast) >= 1 { lastHeartbeat = Date() }
     }
+    func setSoftwareOnline(_ online: Bool) throws {}
     func queryOnline() throws -> Bool { opened }
     func readBattery() throws -> DeviceBattery {
         guard opened else { throw DeviceProtocolError.message("演示设备尚未连接。") }

@@ -573,11 +573,11 @@ struct ContentView: View {
                     .accessibilityLabel(model.l("空闲后停止保活"))
                     .help(model.l("按 Vibe Key 的按键和旋钮操作计算空闲时间，按住期间不会超时。"))
                 }
-                Text(model.l("停止保活会暂停 Layer、手势和宏，设备可能恢复自身键位。"))
+                Text(model.l("停止保活时暂停 Layer、手势和宏；操作 Vibe Key 并松开后自动恢复，唤醒动作不补发。"))
                     .font(.callout).foregroundStyle(.secondary)
-                if model.device.heartbeatPausedForInactivity {
+                if model.device.heartbeatPausedForInactivity || model.device.controlHandoffFailed {
                     HStack {
-                        Label(model.l("因空闲已停止保活"), systemImage: "pause.circle").foregroundStyle(Palette.accent)
+                        Label(model.l(model.device.heartbeatPausedForInactivity ? "因空闲已停止保活" : "心跳已暂停"), systemImage: "pause.circle").foregroundStyle(Palette.accent)
                         Spacer()
                         Button(model.l("恢复保活")) { model.resumeHeartbeat() }
                             .disabled(model.device.busy)

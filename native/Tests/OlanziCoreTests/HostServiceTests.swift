@@ -26,6 +26,7 @@ private final class HostServiceTransport: DeviceTransport {
         lock.withLock { keys[index] = KeyBinding(index: index, entries: entries) }
     }
     func onNextQuery(_ action: @escaping (HostServiceTransport) -> Void) { lock.withLock { queryAction = action } }
+    func setSoftwareOnline(_ online: Bool) throws {}
     func open() throws { heartbeatEnabled = false }
     func close() { heartbeatEnabled = false }
     func pump(for duration: TimeInterval) throws {

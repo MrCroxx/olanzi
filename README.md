@@ -2,9 +2,9 @@
 
 **Open Ulanzi VibeKey AU-05 Driver —— Make VibeKey your own.**
 
-A lightweight, native macOS companion for **Ulanzi Vibe Key (AU05)**.
-Give its three keys and knob your own shortcuts, app switches, and macros,
-with a visual keymap and a menu-bar app that stays out of the way.
+A native macOS driver for **Ulanzi Vibe Key (AU05)** with a **VIA-style visual
+keymap**. Customize its keys and knob, jump to apps, record macros, and build
+four layers of shortcuts for your workflow.
 
 > 🌐 [中文](README.zh.md)
 >
@@ -17,59 +17,90 @@ configurations. They do not represent a connected device or hardware verificatio
 
 ## Features
 
-- **See your whole keymap.** Select a key, knob press, or rotation directly on
-  the device layout. Pick from the key library or record a keyboard shortcut.
-- **Do more with each key.** Assign separate single, double, and long presses.
-  Keyboard actions can tap once, repeat a chosen number of times, or hold where supported.
-- **Hold a key for another layer.** Four layers let the same controls serve
-  different tasks. Override only what you need and inherit the rest.
-- **Bring an app forward.** Assign an application to a key, launching it when
-  needed. Keep reusable app actions in your library.
-- **Turn a sequence into one action.** Record or compose macros that switch
-  apps, send shortcuts, and wait between steps.
-- **Keep your setups.** Save named profiles and export or import them as JSON
-  when moving between Macs.
-- **Stay in the menu bar.** Close the window and keep your mappings active.
-  Check battery status, set an idle timeout, and choose English or Simplified Chinese.
+### A VIA-style configuration interface
 
-### A keymap you can see
+If you use QMK/VIA keyboards, the layout will feel familiar: a visual device,
+clickable keycaps, action categories, and a layer selector. Select a control
+and gesture, choose an action, then **Save to This Mac**. Search the key library
+by name or record a shortcut directly.
 
-All six controls sit around the device: three keys, knob press, and both
-rotation directions. Click a gesture to edit it, then **Save to This Mac**
-when you are ready. Fn, navigation keys, function keys, and recorded
-combinations are available in the same picker.
+The layout covers **all six controls**: three keys, knob press, clockwise
+rotation, and counterclockwise rotation. See each key's single, double, and
+long-press assignments together, without opening a separate editor for every key.
 
-### One device, four layers
+### Custom keys, shortcuts, and gestures
 
-Keep everyday actions on Layer 0 and use Layers 1–3 for another set of
-shortcuts. Assign **MO(1)** to a key to activate Layer 1 while it is held;
-release it to return. A downward triangle means the action is inherited.
-Clicking a layer number previews it for editing.
+Make each control useful for the way you work:
 
-![Layer selection, inherited gestures, and momentary layer actions](docs/images/layers-en.png)
+- **Assign keys and combinations.** Choose letters, symbols, navigation keys,
+  function keys, modifiers, or Mac Fn. Record combinations with the keyboard.
+- **Give a key more than one job.** The three keys and knob press each support
+  single, double, and long presses. Both rotation directions have their own actions.
+- **Choose how a key is sent.** Tap once, repeat 2–20 times, or hold where
+  supported. Output settings are independent for each gesture.
 
-### Shortcuts that span apps
+For example, use a single press to copy, a double press to paste, and the knob
+to move backward or forward through items. Edit a draft, try another mapping,
+or discard your changes before saving.
 
-Build a macro from app switches, keyboard combinations, and delays. Record
-several shortcuts in order, adjust the steps visually, or edit the supported
-QMK-style syntax in Code view. Named actions can be reused across your keymap.
+### Jump to an app with one press
+
+Assign an app to a key or gesture to bring it to the foreground. If it is not
+running, Olanzi launches it first. Keep your editor, browser, terminal, or
+chat app one press away.
+
+Add a local app in **APP**, then assign its **A0**, **A1**, or later keycap.
+The app library keeps these actions reusable across controls and layers.
+App switching can also be the first step of a macro.
+
+### Record and compose macros
+
+Turn a sequence into one action: **switch to an app → wait → send a shortcut**.
+A macro can combine application switches, keyboard combinations, and delays
+in up to 32 ordered steps.
+
+- **Record a sequence.** Capture multiple shortcuts continuously, optionally
+  including the timing between them.
+- **Edit visually.** Add, reorder, or remove steps and adjust delays.
+- **Use QMK-style code.** Switch to Code view to edit the supported macro
+  syntax, validate it, and return to the visual editor.
+- **Reuse named macros.** Save a macro in the library and assign its **M0**,
+  **M1**, or later keycap to different controls and gestures.
 
 ![Native macro editor with an application switch, a delay, and a keyboard shortcut](docs/images/macros-en.png)
 
-<details>
-<summary><strong>Device and app settings</strong></summary>
+### Four layers for different workflows
 
-Open **Settings** for language, device status, keepalive, connection help,
-and saved profiles in one place. Connection help is expanded by default.
+Keep everyday shortcuts on **Layer 0** and build alternate layouts on
+**Layers 1–3**. One layer might hold navigation keys, another editing
+shortcuts, and another app actions or macros.
 
-See battery and charging status at a glance. Choose when to stop keepalive
-after the device is idle, or leave it on. When keepalive pauses, host layers,
-gestures, and macros pause too; resume from Settings or the menu bar.
-Closing the window keeps Olanzi running; quitting stops it.
+Assign **MO(1)** to a key to activate Layer 1 while it is held; release it to
+return. Override only the actions you need. A **▽** inherits the action from
+lower active layers, so shared shortcuts need not be configured again.
+Clicking a layer number selects the layout to edit.
+
+![Layer selection, inherited gestures, and momentary layer actions](docs/images/layers-en.png)
+
+### Built for everyday use on macOS
+
+- **Native and lightweight.** SwiftUI and AppKit provide the window and menu
+  bar. The app communicates with the device directly and runs without Python,
+  a browser, or a local server.
+- **Profiles you can keep.** Save named setups for different tasks. Export and
+  import JSON profiles to move your configuration between Macs.
+- **Background operation.** Close the window and keep using your saved actions.
+  Reopen it from the menu bar or Dock when you want to make a change.
+- **Battery and idle controls.** See battery and charging status, choose an
+  idle keepalive timeout, and resume from Settings or the menu bar. Pausing
+  keepalive also pauses host layers, gestures, and macros.
+- **English and Chinese.** Change the interface language immediately without
+  losing your draft. Device controls, connection help, and profiles share one
+  Settings page, also available with **⌘,**.
+- **Try it without hardware.** Demo mode lets you explore the interface with
+  simulated device data and temporary configurations.
 
 ![Settings with language, device status, keepalive, connection help, and profiles](docs/images/device-en.png)
-
-</details>
 
 ## Get started
 

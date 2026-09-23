@@ -114,7 +114,7 @@ struct DriverStatusView: View {
                 }
                 Divider()
                 HStack {
-                    Button(model.l("打开 Olanzi…"), action: open).buttonStyle(OlanziButtonStyle(.primary))
+                    Button(model.l("打开 Olanzi"), action: open).buttonStyle(OlanziButtonStyle(.primary))
                     Button(action: settings) { Image(systemName: "gearshape") }.help(model.l("设置…"))
                         .accessibilityLabel(model.l("设置…")).buttonStyle(OlanziButtonStyle())
                     Spacer()

@@ -1,6 +1,6 @@
 # Olanzi
 
-**Make Vibe Key your own.**
+**Open Ulanzi VibeKey AU-05 Driver —— Make VibeKey your own.**
 
 A lightweight, native macOS companion for **Ulanzi Vibe Key (AU05)**.
 Give its three keys and knob your own shortcuts, app switches, and macros,

@@ -1,6 +1,6 @@
 # Olanzi
 
-**让 Vibe Key 按你的习惯工作。**
+**Open Ulanzi VibeKey AU-05 Driver —— Make VibeKey your own.**
 
 为 **Ulanzi Vibe Key（AU05）** 打造的轻量原生 macOS 应用。
 给三个按键和旋钮分配自己的快捷键、应用切换和宏，

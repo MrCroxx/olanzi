@@ -109,8 +109,8 @@
 "按键如何响应" = "How keys respond";
 "按键配置回复不完整或格式无效。" = "The key configuration response is incomplete or invalid.";
 "接收 Vibe Key 的按键与旋钮操作" = "Receive key presses and knob movements from Vibe Key";
-"接收器已连接，但 Vibe Key 本体离线，请短按电源键唤醒。" = "The receiver is connected, but Vibe Key is offline. Briefly press its power key to wake it.";
-"插入 USB 接收器后会自动连接。设备休眠时，短按电源键唤醒。" = "Connect the USB receiver to connect automatically. If Vibe Key is asleep, briefly press its power key to wake it.";
+"接收器已连接，但 Vibe Key 本体离线，请长按电源键开机。" = "The receiver is connected, but Vibe Key is offline. Press and hold its power key to turn it on.";
+"插入 USB 接收器后会自动连接。设备未开机时，长按电源键开机。" = "Connect the USB receiver to connect automatically. If Vibe Key is powered off, press and hold its power key to turn it on.";
 "搜索按键" = "Search keys";
 "撤销" = "Undo";
 "撤销更改" = "Discard Changes";

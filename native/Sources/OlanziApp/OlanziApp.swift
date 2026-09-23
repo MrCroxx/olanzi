@@ -118,8 +118,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard !stopping else { return true }
         // 红色关闭按钮与 Cmd-W 只隐藏窗口，保留草稿、菜单栏和独立设备线程。
-        // 不切换 activationPolicy，让 Dock 图标继续表示 App 仍在运行。
+        // 隐藏 Dock 图标，重新打开窗口时由 showWindow 恢复。
         sender.orderOut(nil)
+        NSApp.setActivationPolicy(.accessory)
         return false
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

@@ -590,7 +590,7 @@ struct ContentView: View {
                 Label(model.l("连接帮助"), systemImage: "questionmark.circle")
                     .font(.headline).accessibilityAddTraits(.isHeader)
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(model.l("插入 USB 接收器后会自动连接。设备休眠时，短按电源键唤醒。"))
+                    Text(model.l("插入 USB 接收器后会自动连接。设备未开机时，长按电源键开机。"))
                     Text(model.l("如果其他工具占用设备，请先退出 Ulanzi Studio 或抓包程序。"))
                     if !model.demo {
                         HStack(spacing: 12) {

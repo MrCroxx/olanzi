@@ -242,7 +242,10 @@ public final class NativeDeviceService: @unchecked Sendable {
             state.error = message
             nextConnect = now + 2
         }
-        if state.connected && now >= nextCheck {
+        // 停止保活必须同时停止后台查询，给固件留下真正无请求的空闲窗口。
+        // 仍泵送接收回调，以处理 USB 拔出和物理松开；显式刷新不受此限制。
+        checkHeartbeatIdleTimeout()
+        if state.connected && !state.heartbeatPausedForInactivity && now >= nextCheck {
             nextCheck = now + 2
             do { try checkOnline() }
             catch {
@@ -301,7 +304,9 @@ public final class NativeDeviceService: @unchecked Sendable {
     }
 
     private func refreshBatteryIfDue() {
-        guard state.connected, state.online == true, !isInputSuspended, let transport else { return }
+        checkHeartbeatIdleTimeout()
+        guard state.connected, state.online == true, !isInputSuspended,
+              !state.heartbeatPausedForInactivity, let transport else { return }
         let now = batteryClock()
         guard now >= nextBatteryCheck else { return }
         // 电量是低频遥测，失败也等下个周期；查询沿用 transport 的输入和心跳泵送。

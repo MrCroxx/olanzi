@@ -50,6 +50,10 @@ private final class IdleTestTransport: DeviceTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var allowed = false
     private var sent = 0
+    private var onlineQueries = 0
+    private var batteryReads = 0
+    private var keyReads = 0
+    private var pumps = 0
     private var online: Bool? = true
     private var operations: [() -> Void] = []
     private var lastSent: Date?
@@ -61,12 +65,15 @@ private final class IdleTestTransport: DeviceTransport, @unchecked Sendable {
     }
     var lastHeartbeat: Date? { lock.withLock { lastSent } }
     var heartbeatCount: Int { lock.withLock { sent } }
+    var requestCounts: [Int] { lock.withLock { [sent, onlineQueries, batteryReads, keyReads] } }
+    var pumpCount: Int { lock.withLock { pumps } }
     func setOnline(_ value: Bool?) { lock.withLock { online = value } }
     func enqueue(_ operation: @escaping () -> Void) { lock.withLock { operations.append(operation) } }
     func open() throws { heartbeatEnabled = false }
     func close() { heartbeatEnabled = false }
     func pump(for duration: TimeInterval) throws {
         let work = lock.withLock { () -> [() -> Void] in
+            pumps += 1
             defer { operations.removeAll() }
             return operations
         }
@@ -77,13 +84,19 @@ private final class IdleTestTransport: DeviceTransport, @unchecked Sendable {
         }
     }
     func queryOnline() throws -> Bool {
+        lock.withLock { onlineQueries += 1 }
         guard let value = lock.withLock({ online }) else {
             throw DeviceProtocolError.message("测试在线查询超时")
         }
         return value
     }
     func readKey(index: Int) throws -> KeyBinding {
-        KeyBinding(index: index, entries: [KeyEntry(code: 0x28)])
+        lock.withLock { keyReads += 1 }
+        return KeyBinding(index: index, entries: [KeyEntry(code: 0x28)])
+    }
+    func readBattery() throws -> DeviceBattery {
+        lock.withLock { batteryReads += 1 }
+        return DeviceBattery(millivolts: 3900, percentage: 80, isCharging: false)
     }
     func writeKey(index: Int, code: UInt8) throws { XCTFail("空闲保活设置不能写设备键位") }
 }
@@ -104,7 +117,7 @@ private struct IdleTestHarness {
                                       bridgeFactory: {
             VendorKeyBridge(permissions: { (true, true) }, now: { clock.now },
                             emit: { _, pressed, _ in events.append(pressed) })
-        }, heartbeatIdleTimeout: timeout, idleClock: { clock.now },
+        }, batteryClock: { clock.now }, heartbeatIdleTimeout: timeout, idleClock: { clock.now },
                                       onChange: { snapshots.append($0) })
     }
 }
@@ -216,6 +229,54 @@ final class HeartbeatIdleTests: XCTestCase {
         XCTAssertFalse(harness.transport.heartbeatEnabled)
         XCTAssertEqual(harness.transport.heartbeatCount, count)
         XCTAssertTrue(harness.events.presses.isEmpty)
+    }
+
+    func testIdlePauseStopsAllBackgroundRequestsButKeepsPumpingAndResumeRestartsPolling() throws {
+        let harness = try start()
+        defer { stop(harness) }
+        try pause(harness)
+        let counts = harness.transport.requestCounts
+        let pumps = harness.transport.pumpCount
+        XCTAssertGreaterThan(counts[1], 0)
+        XCTAssertGreaterThan(counts[2], 0)
+        XCTAssertEqual(counts[3], 6)
+        // 电量查询已经到期；同时跨过真实的两秒在线轮询周期。
+        advance(harness, to: 1_100)
+        let pollingWindow = expectation(description: "跨过后台在线查询周期")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 2.3) { pollingWindow.fulfill() }
+        wait(for: [pollingWindow], timeout: 3)
+        var mark = harness.snapshots.count
+        harness.service.checkFnPermissions()
+        _ = try XCTUnwrap(harness.snapshots.completed(after: mark) { $0.heartbeatPausedForInactivity })
+        XCTAssertEqual(harness.transport.requestCounts, counts)
+        XCTAssertGreaterThan(harness.transport.pumpCount, pumps)
+
+        mark = harness.snapshots.count
+        harness.service.resumeHeartbeat()
+        _ = try XCTUnwrap(harness.snapshots.wait(after: mark) {
+            !$0.heartbeatPausedForInactivity && $0.heartbeatEnabled && $0.lastHeartbeat != nil
+                && $0.batteryUpdatedAt != nil
+        })
+        // 在下次泵送前，上一次 tick 的查询和电量读取已经完成。
+        perform(harness) {}
+        let resumed = harness.transport.requestCounts
+        XCTAssertGreaterThan(resumed[0], counts[0])
+        XCTAssertGreaterThan(resumed[1], counts[1])
+        XCTAssertGreaterThan(resumed[2], counts[2])
+        XCTAssertEqual(resumed[3], counts[3])
+    }
+
+    func testExplicitRefreshWhilePausedReadsKeysWithoutRestartingBackgroundTraffic() throws {
+        let harness = try start()
+        defer { stop(harness) }
+        try pause(harness)
+        let counts = harness.transport.requestCounts
+        advance(harness, to: 1_100)
+        let mark = harness.snapshots.count
+        harness.service.refresh()
+        _ = try XCTUnwrap(harness.snapshots.completed(after: mark) { $0.heartbeatPausedForInactivity })
+        perform(harness) {}
+        XCTAssertEqual(harness.transport.requestCounts, [counts[0], counts[1], counts[2], counts[3] + 6])
     }
 
     func testServiceKeepsHeldActionAcrossIdleDeadlineAndCountsFromRelease() throws {

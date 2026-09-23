@@ -76,6 +76,10 @@ The native fix uses `VendorKeyBridge`: consume these vendor events, translate or
 
 The earlier conclusion that keys use standard HID without Studio applies only to the then-observed state without this heartbeat. Presence of the official Studio process is not the only condition: Olanzi sending the same heartbeat also changes the reporting path. Long-term sleep prevention still needs independent measurement; a key-path transition does not establish that sleep is solved.
 
+[CONFIRMED] Source comparison on 2026-09-23: [OpenVibeKey background heartbeat](https://github.com/palaemonboy/OpenVibeKey/blob/c9970faa126cb2ee355571ecd79901e397f49574/native/VibeKit/Sources/VibeKitApp/VibeVM.swift#L544-L567) actually reads battery every three seconds; its [power interface](https://github.com/palaemonboy/OpenVibeKey/blob/c9970faa126cb2ee355571ecd79901e397f49574/native/VibeKit/Sources/VibeKitHID/VibeKitDevice.swift#L134-L155) distinguishes on-device standby and sleep durations. Olanzi previously stopped only the dedicated heartbeat on idle pause, continuing online queries every two seconds and battery reads every 20 seconds. The fix pauses both background requests while retaining receive callbacks, USB removal detection, and explicit user queries. Automated tests cover no background requests after pausing and resumed polling afterwards.
+
+[INFERRED] Remaining queries may interfere with firmware idle timing; source comparison cannot establish the effect of individual requests on the current firmware. Automatic sleep timing after the fix has not been measured, and this fix does not change on-device standby or sleep settings.
+
 ## 5. Reproduce Without Writing Configuration
 
 ```bash

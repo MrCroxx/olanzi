@@ -76,6 +76,10 @@ plaintext: 06 01 23 00 01 + 59 zero bytes
 
 早期“没有 Studio 就直出标准 HID”的结论仅适用于当时未发送该心跳的状态。官方 Studio 进程是否存在不是唯一条件；Olanzi 自行发送同一心跳也会改变上报路径。长时间防休眠效果仍需独立测量，按键路径切换不能证明休眠已解决。
 
+[CONFIRMED] 2026-09-23 源码对照：[OpenVibeKey 的后台心跳](https://github.com/palaemonboy/OpenVibeKey/blob/c9970faa126cb2ee355571ecd79901e397f49574/native/VibeKit/Sources/VibeKitApp/VibeVM.swift#L544-L567)实际每三秒读取电量，其[电源接口](https://github.com/palaemonboy/OpenVibeKey/blob/c9970faa126cb2ee355571ecd79901e397f49574/native/VibeKit/Sources/VibeKitHID/VibeKitDevice.swift#L134-L155)区分设备自身的待机与休眠时长。Olanzi 的空闲暂停原先只停止专用心跳，仍每两秒查询在线、每 20 秒读取电量。修复后暂停这两类后台请求，保留接收回调、USB 移除检测与显式用户查询。自动化测试覆盖暂停后无后台请求和恢复后重新轮询。
+
+[INFERRED] 残留查询可能干扰固件空闲计时；源码对照不能证明具体报文对当前固件的影响。尚未实测修复后的自动休眠时刻，且本次修复不改写设备的待机或休眠配置。
+
 ## 5. 不写配置的复测方法
 
 ```bash

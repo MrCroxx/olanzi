@@ -65,7 +65,7 @@ Before connecting real hardware, quit official Studio and stop any legacy tool t
 
 ## 3. Window and menu-bar lifecycle
 
-Click the menu-bar icon to open a compact status panel showing receiver/device state, battery, keepalive, and permission or connection errors. It also provides connection controls, Resume Keepalive when paused, Settings, Open Olanzi, and Quit.
+Click the menu-bar icon to open a compact status panel showing receiver/device state, battery, keepalive, and permission or connection errors. It also provides connection controls, Resume Keepalive when paused, a single Settings button that always opens the main Keys page, and Quit.
 
 The panel shows today's physical key presses (including knob press), knob turns, and active time, plus a seven-day active-time chart. Each device action starts a 30-second activity window; overlapping windows count once, only elapsed time is counted, and disconnect, sleep, or shutdown ends the window. This is an estimate of device activity, not Mac screen time or speech-input duration. Only events observed through the running driver's vendor channel count; historical activity before this feature or while the driver is stopped is unavailable. Missing days show zero.
 

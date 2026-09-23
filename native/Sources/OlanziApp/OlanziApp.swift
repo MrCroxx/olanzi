@@ -32,8 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem.button?.action = #selector(togglePopover)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: DriverStatusView(
-            model: model, open: { [weak self] in self?.showWindow() },
-            settings: { [weak self] in self?.showSettings() },
+            model: model, settings: { [weak self] in self?.showHome() },
             quit: { [weak self] in self?.quitApp() }))
         model.didChange = { [weak self] in self?.updateMenu() }
         updateMenu()
@@ -89,6 +88,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
         }
+    }
+    private func showHome() {
+        model.page = 0
+        showWindow()
     }
     @objc private func showSettings() {
         model.page = 1

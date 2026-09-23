@@ -5,7 +5,6 @@ import OlanziCore
 /// 菜单栏概览沿用工作区配色；统计只描述设备活动，不猜测正在运行的应用。
 struct DriverStatusView: View {
     @ObservedObject var model: AppModel
-    let open: () -> Void
     let settings: () -> Void
     let quit: () -> Void
 
@@ -114,9 +113,9 @@ struct DriverStatusView: View {
                 }
                 Divider()
                 HStack {
-                    Button(model.l("打开 Olanzi"), action: open).buttonStyle(OlanziButtonStyle(.primary))
-                    Button(action: settings) { Image(systemName: "gearshape") }.help(model.l("设置…"))
-                        .accessibilityLabel(model.l("设置…")).buttonStyle(OlanziButtonStyle())
+                    Button(action: settings) {
+                        Label(model.l("设置"), systemImage: "gearshape")
+                    }.buttonStyle(OlanziButtonStyle(.primary))
                     Spacer()
                     Button(model.l("退出"), action: quit).buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
                 }

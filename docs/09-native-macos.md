@@ -67,6 +67,8 @@ Before connecting real hardware, quit official Studio and stop any legacy tool t
 
 Click the menu-bar icon to open a compact status panel showing receiver/device state, battery, keepalive, and permission or connection errors. It also provides connection controls, Resume Keepalive when paused, a single Settings button that always opens the main Keys page, and Quit.
 
+The panel is constrained to the status icon’s screen, below the menu bar and notch safe area with a 4-point gap. Its position is checked again when its window moves or resizes.
+
 The panel shows today's physical key presses (including knob press), knob turns, and active time, plus a seven-day active-time chart. Each device action starts a 30-second activity window; overlapping windows count once, only elapsed time is counted, and disconnect, sleep, or shutdown ends the window. This is an estimate of device activity, not Mac screen time or speech-input duration. Only events observed through the running driver's vendor channel count; historical activity before this feature or while the driver is stopped is unavailable. Missing days show zero.
 
 Daily totals are stored locally for up to 30 days; no typed content or audio is recorded. Demo mode does not read or write real usage history. Storage failures appear in the panel without interrupting input forwarding.

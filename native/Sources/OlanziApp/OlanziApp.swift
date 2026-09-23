@@ -13,7 +13,7 @@ struct OlanziApp {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate {
     private var model: AppModel!
     private var statusItem: NSStatusItem!
     private var window: NSWindow?
@@ -30,6 +30,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem.button?.target = self
         statusItem.button?.action = #selector(togglePopover)
         popover.behavior = .transient
+        popover.delegate = self
+        // 展示前后都校正位置，避免动画经过菜单栏或刘海区域。
+        popover.animates = false
+        for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(popoverWindowGeometryChanged(_:)),
+                                                   name: name, object: nil)
+        }
         popover.contentViewController = NSHostingController(rootView: DriverStatusView(
             model: model, settings: { [weak self] in self?.showHome() },
             quit: { [weak self] in self?.quitApp() }))
@@ -85,8 +92,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         else {
             model.refreshPermissions()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            constrainPopoverToScreen()
             popover.contentViewController?.view.window?.makeKey()
         }
+    }
+    func popoverDidShow(_ notification: Notification) {
+        constrainPopoverToScreen()
+    }
+    @objc private func popoverWindowGeometryChanged(_ notification: Notification) {
+        guard let changed = notification.object as? NSWindow,
+              changed === popover.contentViewController?.view.window else { return }
+        constrainPopoverToScreen()
+    }
+    private func constrainPopoverToScreen() {
+        guard popover.isShown, let popupWindow = popover.contentViewController?.view.window,
+              let button = statusItem.button, let buttonWindow = button.window else { return }
+        let anchor = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(NSPoint(x: anchor.midX, y: anchor.midY)) })
+                ?? buttonWindow.screen else { return }
+        let corrected = MenuBarPopoverPlacement.constrainedFrame(
+            popupWindow.frame, anchor: anchor, screenFrame: screen.frame,
+            visibleFrame: screen.visibleFrame, safeTop: screen.safeAreaInsets.top)
+        // setFrame 会同步发送移动通知；位置相同就不再设置，避免递归。
+        if popupWindow.frame != corrected { popupWindow.setFrame(corrected, display: true) }
     }
     private func showHome() {
         model.page = 0

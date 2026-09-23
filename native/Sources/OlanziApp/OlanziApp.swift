@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var model: AppModel!
     private var statusItem: NSStatusItem!
     private var window: NSWindow?
+    private let popover = NSPopover()
     private var stopping = false
     private var menuLanguage: AppLanguage?
     private var menuLocale: String?
@@ -27,6 +28,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "Olanzi")
         statusItem.button?.image?.isTemplate = true
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(togglePopover)
+        popover.behavior = .transient
+        popover.contentViewController = NSHostingController(rootView: DriverStatusView(
+            model: model, open: { [weak self] in self?.showWindow() },
+            settings: { [weak self] in self?.showSettings() },
+            quit: { [weak self] in self?.quitApp() }))
         model.didChange = { [weak self] in self?.updateMenu() }
         updateMenu()
         model.start()
@@ -44,6 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func updateMainMenu() {
         let mainMenu = NSMenu()
         let appItem = NSMenuItem(); let appMenu = NSMenu()
+        let overview = NSMenuItem(title: model.l("设备概览"), action: #selector(togglePopover), keyEquivalent: "d")
+        overview.keyEquivalentModifierMask = [.command, .shift]
+        overview.target = self; appMenu.addItem(overview)
         let settings = NSMenuItem(title: model.l("设置…"), action: #selector(showSettings), keyEquivalent: ",")
         settings.target = self; appMenu.addItem(settings); appMenu.addItem(.separator())
         let quit = NSMenuItem(title: model.l("退出 Olanzi"), action: #selector(quitApp), keyEquivalent: "q"); quit.target = self
@@ -69,30 +80,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window?.title = model.demo ? model.l("Olanzi · 演示") : "Olanzi"
         statusItem.button?.toolTip = model.l("Olanzi · 后台设备服务")
         statusItem.button?.setAccessibilityLabel(model.l("Olanzi 后台设备服务"))
-        let menu = NSMenu()
-        let title = NSMenuItem(title: model.status, action: nil, keyEquivalent: ""); title.isEnabled = false; menu.addItem(title)
-        let heartbeatTitle = model.device.heartbeatPausedForInactivity ? "因空闲已停止保活" : model.device.heartbeatEnabled ? "心跳运行中" : model.device.connected ? "心跳已暂停" : "等待设备"
-        let heartbeat = NSMenuItem(title: model.lf("后台运行中 · %@", model.l(heartbeatTitle)), action: nil, keyEquivalent: ""); heartbeat.isEnabled = false; menu.addItem(heartbeat)
-        if model.device.heartbeatPausedForInactivity {
-            let resume = NSMenuItem(title: model.l("恢复保活"), action: #selector(resumeHeartbeat), keyEquivalent: "")
-            resume.target = self
-            menu.addItem(resume)
-        }
-        menu.addItem(.separator())
-        let open = NSMenuItem(title: model.l("打开 Olanzi…"), action: #selector(showWindow), keyEquivalent: "o"); open.target = self; menu.addItem(open)
-        let settings = NSMenuItem(title: model.l("设置…"), action: #selector(showSettings), keyEquivalent: ",")
-        settings.target = self; menu.addItem(settings)
-        let connect = NSMenuItem(title: model.l(model.device.connected ? "断开设备" : "连接设备"), action: #selector(toggleConnection), keyEquivalent: ""); connect.target = self; connect.isEnabled = !model.device.busy; menu.addItem(connect)
-        menu.addItem(.separator())
-        let quit = NSMenuItem(title: model.l("退出 Olanzi"), action: #selector(quitApp), keyEquivalent: "q"); quit.target = self; menu.addItem(quit)
-        statusItem.menu = menu
     }
-    @objc private func resumeHeartbeat() { model.resumeHeartbeat() }
+    @objc private func togglePopover() {
+        guard let button = statusItem.button else { return }
+        if popover.isShown { popover.performClose(nil) }
+        else {
+            model.refreshPermissions()
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+        }
+    }
     @objc private func showSettings() {
         model.page = 1
         showWindow()
     }
     @objc private func showWindow() {
+        popover.performClose(nil)
         if window == nil {
             let created = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 830),
                                    styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
@@ -119,7 +122,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
-    @objc private func toggleConnection() { if model.device.connected { model.disconnect() } else { model.connect() } }
     @objc private func quitApp() { NSApp.terminate(nil) }
     @objc private func systemWillSleep(_ notification: Notification) { model.suspendForSystemSleep() }
     @objc private func systemDidWake(_ notification: Notification) { model.resumeAfterSystemWake() }

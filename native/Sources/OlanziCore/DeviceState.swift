@@ -57,6 +57,8 @@ public struct DeviceSnapshot: Equatable, Sendable {
     public var batteryUpdatedAt: Date? = nil
     public var batteryError: String? = nil
     public var error: String? = nil
+    public var usageDays: [UsageDay] = []
+    public var usageError: String? = nil
     public var busy = false
     public var fn = FnStatus()
     public init() {}

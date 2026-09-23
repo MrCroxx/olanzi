@@ -419,3 +419,19 @@
 "录制中" = "Recording";
 
 "尚未录制" = "Not recorded";
+"后台设备服务" = "Background device service";
+"需要授予输入权限" = "Input permissions required";
+"今日活动" = "Today";
+"按键" = "Key presses";
+"旋钮转动" = "Knob turns";
+"活跃时间" = "Active time";
+"最近 7 天" = "Last 7 days";
+"日期" = "Date";
+"分钟" = "Minutes";
+"%d 秒" = "%d sec";
+"按一下设备，开始积累你的使用足迹。" = "Use your device to start your activity history.";
+"每次操作后的 30 秒计为活跃时间，重叠不重复；纵轴为分钟。" = "Active time counts 30 seconds after each action, without overlap. Chart shows minutes.";
+"统计暂未保存，请检查本地存储。" = "Statistics could not be saved. Check local storage.";
+"退出" = "Quit";
+"仅在本机保存活动汇总，不记录输入内容。" = "Activity totals stay on this Mac. Typed content is never recorded.";
+"设备概览" = "Device Overview";

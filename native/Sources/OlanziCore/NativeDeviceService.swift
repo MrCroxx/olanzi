@@ -7,8 +7,8 @@ public final class NativeDeviceService: @unchecked Sendable {
         case permissions, checkPermissions
         case heartbeatIdleTimeout(TimeInterval?), resumeHeartbeat
         case applyHostKeymap(HostKeymap, UUID)
-        case suspendForSleep, resumeAfterWake(UInt64)
-        case stop(@Sendable () -> Void)
+        case suspendForSleep(Date), resumeAfterWake(UInt64)
+        case stop(Date, @Sendable () -> Void)
     }
     private let condition = NSCondition()
     private var jobs: [Job] = []
@@ -43,13 +43,20 @@ public final class NativeDeviceService: @unchecked Sendable {
     private var nextCheck: TimeInterval = 0
     private var lastConfirmedOnline: Bool?
     private var nextBatteryCheck: TimeInterval = 0
+    private let usageStore: UsageStatisticsStore?
+    private var usage = UsageStatistics()
+    private var usageLoaded = false
+    private var usageLoadFailed = false
+    private var savedUsageDays: [UsageDay] = []
+    private var nextUsagePublish: TimeInterval = 0
+    private var nextUsageSave: TimeInterval = 0
 
     public convenience init(demo: Bool = false, heartbeatIdleTimeout: TimeInterval? = nil,
                             onChange: @escaping @Sendable (DeviceSnapshot) -> Void) {
         self.init(demo: demo, transportFactory: {
             if demo { return DemoHIDTransport() }
             return MacHIDTransport()
-        }, heartbeatIdleTimeout: heartbeatIdleTimeout, onChange: onChange)
+        }, heartbeatIdleTimeout: heartbeatIdleTimeout, usageStore: demo ? nil : UsageStatisticsStore(), onChange: onChange)
     }
 
     init(demo: Bool, transportFactory: @escaping () -> DeviceTransport,
@@ -59,7 +66,9 @@ public final class NativeDeviceService: @unchecked Sendable {
          batteryClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          heartbeatIdleTimeout: TimeInterval? = nil,
          idleClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+         usageStore: UsageStatisticsStore? = nil,
          onChange: @escaping @Sendable (DeviceSnapshot) -> Void) {
+        self.usageStore = demo ? nil : usageStore
         self.demo = demo
         self.transportFactory = transportFactory
         self.loadHostKeymap = loadHostKeymap
@@ -93,7 +102,8 @@ public final class NativeDeviceService: @unchecked Sendable {
             stopCallbacks.append(completion)
         } else {
             stopping = true
-            jobs.append(.stop(completion))
+            inputSuspended = true
+            jobs.append(.stop(Date(), completion))
         }
         condition.signal()
         condition.unlock()
@@ -105,7 +115,7 @@ public final class NativeDeviceService: @unchecked Sendable {
         guard !stopping, !finished else { return }
         inputSuspended = true
         sleepGeneration &+= 1
-        jobs.append(.suspendForSleep)
+        jobs.append(.suspendForSleep(Date()))
         condition.signal()
     }
 
@@ -143,6 +153,7 @@ public final class NativeDeviceService: @unchecked Sendable {
         transport?.onKeyEvent = { [weak self] event in self?.receiveInput(event) }
         transport?.onPump = { [weak self] in self?.pumpInput() }
         state.demo = demo
+        loadUsageOnce()
         loadConfigurationOnce()
         publish()
         while true {
@@ -151,8 +162,8 @@ public final class NativeDeviceService: @unchecked Sendable {
             jobs.removeAll()
             condition.unlock()
             for job in batch {
-                if case .stop(let completion) = job {
-                    disconnectDevice()
+                if case .stop(let date, let completion) = job {
+                    disconnectDevice(at: date)
                     publish()
                     condition.lock()
                     finished = true
@@ -201,8 +212,8 @@ public final class NativeDeviceService: @unchecked Sendable {
                     state.hostSaveResult = HostSaveResult(requestID: requestID, error: error.localizedDescription)
                     throw error
                 }
-            case .suspendForSleep:
-                disconnectDevice()
+            case .suspendForSleep(let date):
+                disconnectDevice(at: date)
             case .resumeAfterWake(let generation):
                 // 即使 wake 先于 sleep 任务被处理，也不能复活睡前的 pending/held。
                 disconnectDevice()
@@ -293,6 +304,7 @@ public final class NativeDeviceService: @unchecked Sendable {
         lastConfirmedOnline = state.online
         if state.online == true && wasConfirmedOnline == false { resetHeartbeatIdleTimer() }
         if state.online == false {
+            suspendUsage()
             // 离线清掉可能丢失 up 的物理按住状态，但保持空闲暂停原因。
             heartbeatIdleTimer.reset(at: idleClock())
             clearBattery()
@@ -385,7 +397,8 @@ public final class NativeDeviceService: @unchecked Sendable {
         }
     }
 
-    private func disconnectDevice() {
+    private func disconnectDevice(at date: Date = Date()) {
+        suspendUsage(at: date)
         transport?.heartbeatEnabled = false
         bridge?.synchronize(configuration: state.hostKeymap, connected: false, online: nil)
         bridge?.close()
@@ -483,6 +496,7 @@ public final class NativeDeviceService: @unchecked Sendable {
         // 暂停后的首个厂商事件可能已由标准 HID 直出，不用它自动恢复或重放。
         // 查询暂时失败时仍消费松开，避免恢复在线后残留 held 导致永不空闲。
         if state.connected && (state.online == true || !event.pressed) {
+            usage.receive(event, at: Date())
             heartbeatIdleTimer.receive(event, at: idleClock())
         }
         bridge?.receive(event)
@@ -546,7 +560,59 @@ public final class NativeDeviceService: @unchecked Sendable {
         }
     }
 
+    private func loadUsageOnce() {
+        guard !usageLoaded else { return }
+        usageLoaded = true
+        if demo {
+            let today = Calendar.current.startOfDay(for: Date())
+            let minutes = [4.0, 12, 8, 0, 18, 7, 11]
+            let days = minutes.enumerated().map { offset, minutes in
+                UsageDay(date: Calendar.current.date(byAdding: .day, value: offset - 6, to: today)!,
+                         keyPresses: Int(minutes * 9), knobTurns: Int(minutes * 4), activeSeconds: minutes * 60)
+            }
+            usage = UsageStatistics(days: days)
+            savedUsageDays = days
+            return
+        }
+        do {
+            let days = try usageStore?.load() ?? []
+            usage = UsageStatistics(days: days)
+            savedUsageDays = days
+        } catch {
+            usageLoadFailed = true
+            state.usageError = "使用统计读取失败，原文件已保留：" + error.localizedDescription
+        }
+    }
+
+    private func saveUsage() {
+        guard !usageLoadFailed, let usageStore, usage.days != savedUsageDays else { return }
+        do {
+            try usageStore.save(usage.days)
+            savedUsageDays = usage.days
+            state.usageError = nil
+        } catch {
+            state.usageError = "使用统计保存失败：" + error.localizedDescription
+        }
+    }
+
+    private func suspendUsage(at date: Date = Date()) {
+        usage.suspend(at: date)
+        state.usageDays = usage.days
+        saveUsage()
+    }
+
     private func publish() {
+        let now = ProcessInfo.processInfo.systemUptime
+        if now >= nextUsagePublish {
+            nextUsagePublish = now + 1
+            if !isInputSuspended { usage.advance(to: Date()) }
+            state.usageDays = usage.days
+        }
+        // 输入热路径只修改内存；最多每分钟落盘一次，并在断线、睡眠、停止时落盘。
+        if now >= nextUsageSave {
+            nextUsageSave = now + 60
+            saveUsage()
+        }
         var snapshot = state
         // 设备查询成功不能抹掉损坏文件或保存失败；用户必须始终看得到这个错误。
         if let hostConfigurationError { snapshot.error = hostConfigurationError }

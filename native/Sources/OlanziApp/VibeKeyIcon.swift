@@ -4,20 +4,17 @@ import AppKit
 enum VibeKeyIcon {
     static let image: NSImage = {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
-            NSColor.black.setStroke()
             NSColor.black.setFill()
-            let body = NSBezierPath(roundedRect: NSRect(x: 4, y: 0.75, width: 10, height: 16.5),
-                                    xRadius: 2.2, yRadius: 2.2)
-            body.lineWidth = 1.3
-            body.stroke()
-
-            let knob = NSBezierPath(ovalIn: NSRect(x: 6.75, y: 11.2, width: 4.5, height: 4.5))
-            knob.lineWidth = 1.2
-            knob.stroke()
-            for y in [2.6, 5.3, 8.0] {
-                NSBezierPath(roundedRect: NSRect(x: 6.6, y: y, width: 4.8, height: 1.5),
-                             xRadius: 0.6, yRadius: 0.6).fill()
+            let body = NSBezierPath(roundedRect: NSRect(x: 3.35, y: 0.1, width: 11.3, height: 17.8),
+                                    xRadius: 2.85, yRadius: 2.85)
+            // 偶奇填充让旋钮和按键真正透明，深浅菜单栏都能透出背景。
+            body.windingRule = .evenOdd
+            body.append(NSBezierPath(ovalIn: NSRect(x: 6.4, y: 10.9, width: 5.2, height: 5.2)))
+            for y in [2.4, 5.1, 7.8] {
+                body.append(NSBezierPath(roundedRect: NSRect(x: 6.4, y: y, width: 5.2, height: 1.7),
+                                         xRadius: 0.65, yRadius: 0.65))
             }
+            body.fill()
             return true
         }
         image.isTemplate = true

@@ -69,8 +69,6 @@ struct ActionPalette: View {
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(model.l("选择按键")).font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary).padding(.horizontal, 10).padding(.bottom, 5)
                 ForEach(categories, id: \.self) { name in
                     if name == "组合键" { Divider().padding(.vertical, 4) }
                     Button { category = name; search = "" } label: {
@@ -90,7 +88,7 @@ struct ActionPalette: View {
                         .accessibilityLabel(model.lf("按键分类：%@", model.l(name)))
                         .accessibilityAddTraits(category == name ? .isSelected : [])
                 }
-            }.frame(width: 116).padding(10)
+            }.frame(width: 148).padding(10)
             Rectangle().fill(.white.opacity(0.07)).frame(width: 1)
             VStack(alignment: .leading, spacing: 12) {
                 if let editor {
@@ -135,10 +133,7 @@ struct ActionPalette: View {
     private var layers: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(model.l("按住切换 Layer")).font(.headline)
-            Text(model.l("MO(n)：分配给单击时按下立即切层；分配给长按时达到长按时间后切层，松开恢复。"))
-                .font(.callout).foregroundStyle(.secondary)
-            Text(model.l("单击切层可同时设置长按动作；分配单击切层时仅清除双击。"))
-                .font(.caption).foregroundStyle(.secondary)
+                .help(model.l("MO(n)：分配给单击时按下立即切层；分配给长按时达到长按时间后切层，松开恢复。"))
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 90, maximum: 120), spacing: 8)], spacing: 8) {
                 specialKeys
                 ForEach(model.layerIDs.filter { $0 != 0 }, id: \.self) { id in
@@ -148,10 +143,9 @@ struct ActionPalette: View {
                     .buttonStyle(KeycapButtonStyle(selected: !model.isInherited(model.selected, gesture: model.gesture) && model.assignedAction(model.selected, gesture: model.gesture) == .momentaryLayer(id)))
                     .disabled(!model.canEdit || model.selected >= 4 || model.gesture == .doublePress)
                     .accessibilityLabel(model.lf("按住切换到 Layer %d", id))
+                    .help(model.l("单击切层可同时设置长按动作；分配单击切层时仅清除双击。"))
                 }
             }
-            Text(model.l("未配置的控件继承底层；多个层同时启用时，编号较大的层优先。"))
-                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -182,11 +176,7 @@ struct ActionPalette: View {
         let items = model.libraryItems.filter { kind.includes($0.action) }.sorted { $0.slot < $1.slot }
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(model.l(kind == .macro ? "宏" : "APP")).font(.headline)
-                    Text(model.l("点击键帽分配给选中的动作；点击铅笔编辑。"))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                Text(model.l(kind == .macro ? "宏" : "APP")).font(.headline)
                 Spacer(minLength: 8)
                 Button { editor = EditTarget(kind: kind) } label: {
                     Label(model.l(kind == .macro ? "新建宏" : "添加 APP"), systemImage: "plus")
@@ -195,7 +185,7 @@ struct ActionPalette: View {
             if items.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: kind.symbol).font(.system(size: 27)).foregroundStyle(Palette.accent.opacity(0.7))
-                    Text(model.l(kind == .macro ? "先录制一个宏，再像普通按键一样分配。" : "添加常用 APP，之后点击键帽即可分配。"))
+                    Text(model.l(kind == .macro ? "暂无宏" : "暂无 APP"))
                         .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }.frame(maxWidth: .infinity).padding(.vertical, 28)
             } else {
@@ -234,11 +224,11 @@ struct ActionPalette: View {
                 .accessibilityLabel(model.lf("分配 %@", model.libraryItemLabel(item)))
                 .help(model.actionLabel(item.action))
             HStack(spacing: 0) {
-                Text(model.lf("%d 个绑定", model.usageCount(item.id))).font(.caption2).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 Button { editor = EditTarget(item: item, kind: kind) } label: { Image(systemName: "pencil") }
                     .buttonStyle(OlanziButtonStyle(.subtle))
                     .accessibilityLabel(model.lf("编辑 %@", model.libraryItemLabel(item)))
+                    .help(model.lf("%d 个绑定", model.usageCount(item.id)))
             }
         }
     }
@@ -252,14 +242,14 @@ private struct ShortcutAssignmentEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(model.l("组合键")).font(.headline)
-            Text(model.l("按住需要组合的按键，全部松开后完成。"))
-                .font(.callout).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 8) {
                 if recorder.isRecording {
                     HStack(spacing: 7) {
                         Circle().fill(Color.red).frame(width: 7, height: 7)
                         Text(model.l("录制中")).font(.callout)
                     }
+                    Text(model.l("按住需要组合的按键，全部松开后完成。"))
+                        .font(.callout).foregroundStyle(.secondary)
                 }
                 let preview = recorder.isRecording ? (recorder.candidate ?? []) : keys
                 if !preview.isEmpty {
@@ -278,6 +268,7 @@ private struct ShortcutAssignmentEditor: View {
                     recorder.start(window: NSApp.keyWindow)
                 } label: { Label(model.l("录制组合键"), systemImage: "record.circle") }
                     .disabled(recorder.isRecording || !model.canEdit)
+                    .help(model.l("系统快捷键可能被 macOS 优先处理。"))
                 if recorder.isRecording {
                     Button(model.l("取消录制")) { reset() }
                 }
@@ -288,7 +279,6 @@ private struct ShortcutAssignmentEditor: View {
                     .disabled(recorder.isRecording || keys.isEmpty || recorder.error != nil || !model.canEdit)
             }
             if let error = recorder.error { Text(model.displayError(error)).foregroundStyle(.orange).font(.callout) }
-            Text(model.l("系统快捷键可能被 macOS 优先处理。")) .font(.caption).foregroundStyle(.secondary)
         }
         .background(ShortcutRecordingFocus(recorder: recorder).frame(width: 0, height: 0))
         .onChange(of: recorder.result) { _, result in

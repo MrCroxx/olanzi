@@ -6,6 +6,7 @@ struct ContentView: View {
     @ObservedObject var model: AppModel
     @State private var profileName = ""
     @State private var showsGestureHelp = false
+    @State private var showsConnectionHelp = true
     var body: some View {
         Group {
             if !model.demo && model.needsPermissionSetup {
@@ -39,15 +40,15 @@ struct ContentView: View {
         .accessibilityLabel(model.l("界面语言"))
     }
     private var appSettings: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Text(model.l("设置")).font(.title2.bold())
+        VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Label(model.l("界面语言"), systemImage: "globe").font(.headline)
+                Text(model.l("设置")).font(.title2.bold())
                 Spacer()
-                languagePicker.labelsHidden().frame(width: 260)
+                Label(model.l("界面语言"), systemImage: "globe").font(.body)
+                languagePicker.labelsHidden().frame(width: 200)
             }
-            .padding(24)
-            .background(Palette.surface, in: RoundedRectangle(cornerRadius: 10))
+            deviceSettings
+            profiles
         }
     }
     private var permissionWelcome: some View {
@@ -95,7 +96,7 @@ struct ContentView: View {
                     Text(error).font(.callout).foregroundStyle(Palette.accent)
                         .multilineTextAlignment(.center)
                 }
-                Text(model.l("在系统设置中开启 Olanzi。\n每秒自动检测，权限就绪后会自动进入。"))
+                Text(model.l("在系统设置中开启 Olanzi，授权后自动进入。"))
                     .font(.callout).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center).lineSpacing(4)
                 HStack(spacing: 6) {
@@ -138,11 +139,9 @@ struct ContentView: View {
                         if model.page == 0 {
                             keymap(availableHeight: viewport.size.height - 28,
                                    availableWidth: viewport.size.width - 48)
-                        } else if model.page == 1 { deviceSettings }
-                        else if model.page == 2 { profiles }
-                        else { appSettings }
+                        } else { appSettings }
                     }
-                    .padding(.horizontal, 24).padding(.vertical, model.page == 0 ? 14 : 28)
+                    .padding(.horizontal, 24).padding(.vertical, model.page == 0 ? 14 : 20)
                     .frame(maxWidth: .infinity)
                 }
             }
@@ -187,7 +186,7 @@ struct ContentView: View {
                 Text("OLANZI").font(.system(size: 17, weight: .bold, design: .rounded)).tracking(3)
             }
             Spacer()
-            ForEach(Array([(0, "keyboard", "键位"), (1, "slider.horizontal.3", "设备"), (2, "square.stack", "配置"), (3, "gearshape", "设置")].enumerated()), id: \.offset) { _, item in
+            ForEach(Array([(0, "keyboard", "键位"), (1, "gearshape", "设置")].enumerated()), id: \.offset) { _, item in
                 Button { model.page = item.0 } label: {
                     Label(model.l(item.2), systemImage: item.1).font(.system(size: 14, weight: .medium))
                         .foregroundStyle(model.page == item.0 ? Palette.accent : Color.gray)
@@ -240,9 +239,8 @@ struct ContentView: View {
                         .accessibilityAddTraits(model.selectedLayer == id ? .isSelected : [])
                 }
             }.padding(4).background(Palette.surface, in: RoundedRectangle(cornerRadius: 8))
+                .help(model.l("编辑层仅用于预览；保存后按住 MO 键切层。"))
             Spacer()
-            Text(model.l("编辑层仅用于预览；保存后按住 MO 键切层。"))
-                .font(.caption).foregroundStyle(.secondary)
         }.buttonStyle(OlanziButtonStyle())
     }
     private var hardware: some View {
@@ -423,6 +421,7 @@ struct ContentView: View {
                         Text(model.l("长按切层达到设定时间后启用，松开恢复；不会补发单击动作。"))
                     }
                     Text(model.l("带叉圆角正方形表示不执行动作；双击和长按设为空时不参与手势判定。倒三角表示继承较低活动层的当前动作。"))
+                    Text(model.l("未配置的控件继承底层；多个层同时启用时，编号较大的层优先。"))
                     if let hint = model.fnBehaviorHint { Text(hint).foregroundStyle(Palette.accent) }
                 }.font(.body).padding(24).frame(width: 360)
             }
@@ -541,9 +540,9 @@ struct ContentView: View {
         }.frame(width: 108, height: 416)
     }
     private var deviceSettings: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("Vibe Key").font(.title2.bold())
+                Text("Vibe Key").font(.headline)
                 Spacer()
                 Button(model.l("刷新状态")) { model.refresh() }
                     .disabled(!model.device.connected || model.device.busy)
@@ -551,20 +550,17 @@ struct ContentView: View {
                     if model.device.connected { model.disconnect() } else { model.connect() }
                 }.disabled(model.device.busy)
             }
-            HStack(spacing: 24) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Label(model.status, systemImage: "keyboard").font(.headline)
-                    Label(model.batteryText, systemImage: model.batterySymbol).font(.body)
-                        .help(model.batteryHelp)
-                }.frame(maxWidth: .infinity, alignment: .leading)
-                VStack(alignment: .leading, spacing: 12) {
-                    Label(model.l(model.device.heartbeatPausedForInactivity ? "因空闲已停止保活" : model.device.heartbeatEnabled ? "后台运行中" : "后台已暂停"),
-                          systemImage: "waveform.path.ecg").font(.headline)
-                    Text(model.l("关闭窗口后继续运行，退出应用时停止。"))
-                        .font(.body).foregroundStyle(.secondary)
-                }.frame(maxWidth: .infinity, alignment: .leading)
-            }.padding(24).background(Palette.surface, in: RoundedRectangle(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 20) {
+                Label(model.status, systemImage: "keyboard")
+                Label(model.batteryText, systemImage: model.batterySymbol)
+                    .help(model.batteryHelp)
+                Spacer()
+                Label(model.l(model.device.heartbeatPausedForInactivity ? "因空闲已停止保活" : model.device.heartbeatEnabled ? "后台运行中" : "后台已暂停"),
+                      systemImage: "waveform.path.ecg")
+                    .help(model.l("关闭窗口后继续运行，退出应用时停止。"))
+            }.font(.body).foregroundStyle(.secondary)
+            Divider()
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Label(model.l("保活"), systemImage: "waveform.path.ecg").font(.headline)
                     Spacer()
@@ -576,10 +572,9 @@ struct ContentView: View {
                         }
                     }.frame(width: 290)
                     .accessibilityLabel(model.l("空闲后停止保活"))
+                    .help(model.l("按 Vibe Key 的按键和旋钮操作计算空闲时间，按住期间不会超时。"))
                 }
-                Text(model.l("按 Vibe Key 的按键和旋钮操作计算空闲时间，按住期间不会超时。设置立即生效并保存在本机。"))
-                    .font(.callout).foregroundStyle(.secondary)
-                Text(model.l("停止保活后，本机 Layer、手势和宏暂停，设备可能恢复自身键位。可点“恢复保活”，或等待设备重新唤醒后恢复。"))
+                Text(model.l("停止保活会暂停 Layer、手势和宏，设备可能恢复自身键位。"))
                     .font(.callout).foregroundStyle(.secondary)
                 if model.device.heartbeatPausedForInactivity {
                     HStack {
@@ -590,9 +585,10 @@ struct ContentView: View {
                             .help(model.l("有按住的按键时，松开后恢复。"))
                     }
                 }
-            }.padding(24).background(Palette.surface, in: RoundedRectangle(cornerRadius: 10))
-            DisclosureGroup(model.l("连接帮助")) {
-                VStack(alignment: .leading, spacing: 16) {
+            }
+            Divider()
+            DisclosureGroup(model.l("连接帮助"), isExpanded: $showsConnectionHelp) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text(model.l("插入 USB 接收器后会自动连接。设备休眠时，短按电源键唤醒。"))
                     Text(model.l("如果其他工具占用设备，请先退出 Ulanzi Studio 或抓包程序。"))
                     if !model.demo {
@@ -602,13 +598,13 @@ struct ContentView: View {
                             Button(model.l("显示 App 位置")) { model.revealApplication() }
                         }
                     }
-                }.font(.body).padding(.top, 16)
+                }.font(.body).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
             }.font(.body)
-        }
+        }.padding(18).background(Palette.surface, in: RoundedRectangle(cornerRadius: 10))
     }
     private var profiles: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text(model.l("键位配置")).font(.title2.bold())
+        VStack(alignment: .leading, spacing: 12) {
+            Text(model.l("键位配置")).font(.headline)
             HStack {
                 TextField(model.l("配置名称"), text: $profileName).textFieldStyle(OlanziTextFieldStyle()).frame(maxWidth: 320)
                 Button(model.l("保存当前配置")) { model.saveProfile(name: profileName); profileName = "" }
@@ -626,15 +622,15 @@ struct ContentView: View {
                     Spacer()
                     Button(model.l("载入")) { model.loadProfile(profile) }
                     Button { model.removeProfile(profile.id) } label: { Image(systemName: "trash") }.help(model.l("删除配置"))
-                }.padding(18).background(Palette.surface, in: RoundedRectangle(cornerRadius: 8))
+                }.padding(12).background(Palette.raised, in: RoundedRectangle(cornerRadius: 8))
             }
-            if model.profiles.isEmpty { Text(model.l("还没有保存的配置。")).foregroundStyle(.secondary).padding(.vertical, 35) }
+            if model.profiles.isEmpty { Text(model.l("还没有保存的配置。")).foregroundStyle(.secondary).padding(.vertical, 6) }
             HStack {
                 Button(model.l("载入默认键位")) { model.loadDefaults() }
                 Button(model.l("从设备键位导入")) { model.importDeviceBindings() }
                     .disabled(!model.online || model.device.busy || model.device.keys.count != 6)
             }
-        }
+        }.padding(18).background(Palette.surface, in: RoundedRectangle(cornerRadius: 10))
     }
     private var footer: some View {
         VStack(spacing: 0) {

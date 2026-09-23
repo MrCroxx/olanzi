@@ -72,9 +72,8 @@ struct ActionEditor: View {
             TextField(model.l("动作名称"), text: $name)
                 .textFieldStyle(OlanziTextFieldStyle()).disabled(busyRecording)
             if kind == .application {
-                Text(model.l("启动或切换到所选 APP，等待它成为前台应用。"))
-                    .font(.callout).foregroundStyle(.secondary)
                 applicationRow(application) { application = $0; if name.isEmpty { name = $0.name } }
+                    .help(model.l("启动或切换到所选 APP，等待它成为前台应用。"))
                 Spacer(minLength: 100)
             } else {
                 HStack(spacing: 6) {
@@ -94,13 +93,12 @@ struct ActionEditor: View {
             if let error { Text(model.displayError(error)).foregroundStyle(.orange).font(.callout).fixedSize(horizontal: false, vertical: true) }
             Divider()
             HStack {
-                Text(model.l("保存到动作库后，点击键帽分配；保存到本机后生效。"))
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
                 Button(model.l("取消")) { recorder.reset(); macroRecorder.reset(); onClose() }
                     .disabled(busyRecording)
                 Button(model.l("保存动作")) { save() }
                     .buttonStyle(OlanziButtonStyle(.primary))
+                    .help(model.l("保存到动作库后，点击键帽分配；保存到本机后生效。"))
                     .disabled(busyRecording || recordingSessionShown || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
                               (kind == .application ? application == nil : codeMode ? codeSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : steps.isEmpty))
             }
@@ -129,8 +127,10 @@ struct ActionEditor: View {
                 Spacer()
                 Text(model.lf("%d / 32 步", macroRecorder.steps.count)).monospacedDigit().foregroundStyle(.secondary)
             }
-            Text(model.l("依次按下按键或组合键，完成后点击停止。"))
-                .font(.caption).foregroundStyle(.secondary)
+            if macroRecorder.isRecording {
+                Text(model.l("依次按下按键或组合键，完成后点击停止。"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(macroRecorder.steps.enumerated()), id: \.offset) { index, step in
@@ -162,8 +162,6 @@ struct ActionEditor: View {
 
     private var codeEditor: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(model.l("QMK 宏语法子集；应用切换使用 OLANZI_APP 扩展。"))
-                .font(.caption).foregroundStyle(.secondary)
             TextEditor(text: $codeSource)
                 .font(.system(size: 13, design: .monospaced))
                 .autocorrectionDisabled()
@@ -188,6 +186,7 @@ struct ActionEditor: View {
     private var codeHelp: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(model.l("QMK 宏代码")).font(.headline)
+            Text(model.l("QMK 宏语法子集；应用切换使用 OLANZI_APP 扩展。"))
             Text("OLANZI_APP(\"com.openai.codex\");\nwait_ms(800);\ntap_code16(LCTL(LALT(LGUI(KC_I))));")
                 .font(.system(.body, design: .monospaced)).textSelection(.enabled)
             Text(model.l("使用 QMK 键码和毫秒等待。只解析受支持的宏语句，不执行任意 C 代码。"))
@@ -234,7 +233,7 @@ struct ActionEditor: View {
                         stepRow(offset, step: step)
                     }
                     if steps.isEmpty {
-                        Text(model.l("添加 APP、组合键或等待步骤，组成你的宏。"))
+                        Text(model.l("暂无步骤"))
                             .foregroundStyle(.secondary).padding(36)
                     }
                 }
@@ -306,7 +305,6 @@ struct ActionEditor: View {
                         }
                     }.menuStyle(.borderlessButton).padding(.horizontal, 10).frame(width: 150, height: 34)
                         .background(Palette.surface, in: RoundedRectangle(cornerRadius: 6))
-                    Text(model.l("也可录制完整组合键。")) .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                 }.disabled(recorder.isRecording)
             }
@@ -317,10 +315,8 @@ struct ActionEditor: View {
     private func applicationRow(_ target: ApplicationTarget?, set: @escaping (ApplicationTarget) -> Void) -> some View {
         HStack {
             Image(systemName: "app")
-            VStack(alignment: .leading) {
-                Text(target?.name ?? model.l("尚未选择 APP"))
-                if let target { Text(target.path).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
-            }
+            Text(target?.name ?? model.l("尚未选择 APP"))
+                .help(target?.path ?? "")
             Spacer()
             Button(model.l("选择 APP…")) { if let target = chooseApplication() { set(target) } }
                 .disabled(recorder.isRecording)

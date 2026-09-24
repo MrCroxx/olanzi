@@ -138,10 +138,7 @@ at login is not configured.
 
 ### Device support
 
-Olanzi currently supports **AU05 key and knob actions and lighting controls**.
-The Lighting tab loads settings automatically and provides global and per-light controls.
-For protocol details and verification limits, see the [lighting protocol](docs/02-vibekey-protocol.md).
-Firmware updates, multimedia output, and other Ulanzi devices are not yet
+Olanzi currently supports **AU05 key and knob actions and lighting controls**. Firmware updates, multimedia output, and other Ulanzi devices are not yet
 supported in the app. Some advanced gesture and layer combinations still
 need physical-device verification; see the [input runtime guide](docs/10-input-runtime.md)
 for behavior and validation limits.

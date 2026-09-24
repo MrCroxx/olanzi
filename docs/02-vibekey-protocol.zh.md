@@ -388,30 +388,17 @@ python3 vibekey.py --probe --poll 2
 
 - 电源键长按是否关机会不会发报文（未测，有风险）
 - 通知子类型 `0x0B` / `0x0D` 的完整语义
-- 指示灯枚举在本机固件上的实际效果、时间单位和断电后的持久化；字段布局已由源码交叉确认，见下文
+- 指示灯参数的字段布局（`00 00 02 07 02 | 0a 02 07 02 02 | 0a 02 07 02 01 | 0a 02 07 02 00`）
+  疑似 3 组（对应 待机 / 工作中 / 需要审批），但字节含义未定
 - AI 状态 → 指示灯的具体数值映射
   （`UlanziDeck::updateIndicatorLightByState` / `LedIndicator::getConfigForState`）
 - 组合键（`num > 1`）与 `类型=0x03` 的实际行为
 
-[CONFIRMED] 源码交叉确认：[VibeKey Lite 字段表](https://github.com/arumwu/vibekey-lite/blob/43fb9017790838c454fc2159f3608d576c5c6e3a/docs/protocol.md#L270-L306) 与 [OpenVibeKey 构帧](https://github.com/palaemonboy/OpenVibeKey/blob/c9970faa126cb2ee355571ecd79901e397f49574/native/VibeKit/Sources/VibeKitHID/VibeKitDevice.swift#L92-L126) 一致使用读取 `01 0b 88 01`、写入 `01 0b 88 04`。明文偏移 4 为字段掩码，5 为灯索引，6 为全局模式，7 为全亮亮度；偏移 `8 + 5*i` 起有四组 `[type, workTime, breatheLevel, breatheBrightness, alwaysOnBrightness]`，对应掩码 `0x04`、`0x08`、`0x10`、`0x20`、`0x40`，全局模式与亮度掩码为 `0x01`、`0x02`。此前“疑似三组”的解释已被此源码布局取代。
-
-[CONFIRMED] 当前实现依据下文 Studio 亮度范围与 [OpenVibeKey 模式/类型枚举](https://github.com/palaemonboy/OpenVibeKey/blob/c9970faa126cb2ee355571ecd79901e397f49574/native/VibeKit/Sources/VibeKitApp/ContentView.swift#L435-L478)，提供全局模式 0/1/2（全灭/全亮/工作）、全亮与逐灯常亮/呼吸亮度 0–20（整数档位），四灯按键 1/2/3/旋钮顺序可设灭或常亮，仅键 1 可选呼吸。打开灯效标签页时自动读取，无草稿时切回会重新读取；连接未就绪或操作忙时延后，有草稿时保留编辑。先读改写并保留全部四灯的其他参数，写后再次 GET 核对，不做后台灯效轮询，读取失败不循环查询。应用失败保留草稿，以当前回读作为下一次显式重试基线，不自动重发。[INFERRED] 上述物理灯顺序与枚举语义沿用参考实现，尚未在本机硬件上验证；不承诺持续呼吸、时间单位或持久化。使用入口见 [09 · 原生 App](09-native-macos.zh.md)。
-
-[CONFIRMED] 原 Studio 静态证据：本机 `/Applications/Ulanzi Studio.app/Contents/Resources/Ulanzi/UlanziDeck/version.txt` 为 `version=3.3.9`。其 `Contents/MacOS/UlanziDeck` 的 `SettingDialog::SettingDialog(QString, QWidget*)` 在 `0x1003ac404` 至 `0x1003ac43c` 将灯效滑块设为最小 0、最大 20、步长 1。`SettingDialog::onLightBrightnessChanged()` 在 `0x1003b3974` 至 `0x1003b39bc` 将原始滑块值用于工作模式旋钮（index 3）的常亮亮度，以及按键（index 0/1/2）的呼吸亮度；在 `0x1003b3a74` 至 `0x1003b3a80` 写全亮亮度，不做比例换算。`Contents/Frameworks/kwdm.dylib` 的 `+[MessageHelper setDeviceIndicatorLightWorkModeBreatheBrightnessLevel:level:]` 与 `+[MessageHelper setDeviceIndicatorLightWorkModeAlwaysOnBrightnessLevel:level:]` 分别以掩码 `0x20`、`0x40` 写偏移 `11 + 5*i`、`12 + 5*i`。这些证据确认原 Studio 的使用范围与工作模式调光路径，不证明每档物理效果或光强线性；0–20 不能标为百分比。原生 App 按当前逐灯类型编辑对应亮度，保留另一类型亮度与时间参数。
-
-[CONFIRMED] 本机只读查询收到 `81 0b 88 11 00 00 02 07 02 0a 02 07 02 02 0a 02 07 02 02 0a 02 07 02 01 0a 02 07 02`，确认读取 access 为 `0x11`，模式原值为 2、亮度原值为 7、四灯类型原值为 2/2/2/1。亮度 7 是原 Studio 采用的 0–20 范围内的档位，不是百分比；它对应的实际光强未测。超出已知范围的读数仍须原样保留。读取到类型 2 不证明该灯实际持续呼吸。
-
-[CONFIRMED] 2026-09-24 本机模式写入与恢复回读：从模式 2 以掩码 `0x01` 改为 0，GET 确认偏移 6 为 0，偏移 7…27 不变；随后恢复模式 2，GET 确认偏移 6…27 全部与原始值一致。这确认模式字段的读写及本次恢复，不代表已观察实体灯光变化；逐灯类型写入仍待真机验证；亮度验证见下文。
-
-[CONFIRMED] 同日亮度写入测试：全亮亮度通过掩码 `0x02` 从 1 改为 2、键 1 呼吸亮度通过掩码 `0x20` 从 7 改为 8，均由 GET 确认。旋钮常亮亮度通过掩码 `0x40`、focus index 3、偏移 27 从 2 分别尝试改为 3、1、0、20，GET 均仍为 2，其他字段不变。这保留了此前回读不一致的事实，但不能推出写入未生效：后续完整负载 `0x40`、完整负载 `0x7c` 与原 Studio 风格稀疏负载均收到 access `0x14`、值 8 的 ACK，而 GET 仍为 2。用户现场明确确认，旋钮亮度 0 → 20 时明显先暗后亮；该写入有效，原先把 GET 不变当作失败属于误判。随后发送值 2 的恢复命令并收到 ACK；由于 GET 此字段不可靠，不能仅凭 GET 宣称恢复了此前真实光强。关键帧见[灯效验证记录](evidence/2026-09-24-knob-brightness-readback.log)。
-
-[CONFIRMED] 修复对每条请求等待匹配命令、字段掩码、灯索引与选中字段值的 `0x14` ACK。仅旋钮常亮亮度不依赖 GET 偏移 27 判断成功，以本连接内最近 ACK 确认的命令值供显示；原始 GET 保留，不伪造成新读数。首次连接无确认值时显示 `—`，重连或离线清除会话值；其他字段继续 GET 核对。会话值表示本应用最近确认的设置，不能跟踪外部工具的修改，不证明断电持久化或全部亮度档位的物理效果。
-
 ### 下一步（按价值排序）
 
 1. ~~把键 1 重新编程~~ ✅ **已完成**，见第 6 节
-2. **验证指示灯** —— 原生 App 已接入 `setDeviceIndicatorLight*` (`01 0b 88 04`) 的手动调节与回读核对；
-   本机物理灯效、持久化及 AI 状态联动仍待验证
+2. **驱动指示灯** —— 用 `setDeviceIndicatorLight*` (`01 0b 88 04`)，
+   复刻 AI 状态灯效
 3. **Ollama / 脚本回调** —— 既然按键是标准键盘，可以直接接 shell 脚本
 4. **做成常驻服务** —— 替代 Studio 的"AI hooks → 指示灯"链路
 

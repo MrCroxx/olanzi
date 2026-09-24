@@ -13,20 +13,27 @@ protocol DeviceTransport: AnyObject {
     func pump(for duration: TimeInterval) throws
     func queryOnline() throws -> Bool
     func readBattery() throws -> DeviceBattery
+    func readLighting() throws -> DeviceLighting
+    var acknowledgedKnobBrightness: UInt8? { get }
+    func writeLighting(_ desired: DeviceLighting, expected: DeviceLighting, setKnobBrightness: Bool) throws
     func readKey(index: Int) throws -> KeyBinding
     func writeKey(index: Int, code: UInt8) throws
     func takeKeyEvents() -> [VendorKeyEvent]
 }
 
 extension DeviceTransport {
+    var acknowledgedKnobBrightness: UInt8? { nil }
     var onKeyEvent: ((VendorKeyEvent) -> Void)? { get { nil } set {} }
     var onPump: (() -> Void)? { get { nil } set {} }
     func takeKeyEvents() -> [VendorKeyEvent] { [] }
+    func readLighting() throws -> DeviceLighting { throw DeviceProtocolError.message("此连接尚不支持灯效读取。") }
+    func writeLighting(_ desired: DeviceLighting, expected: DeviceLighting, setKnobBrightness: Bool) throws { throw DeviceProtocolError.message("此连接尚不支持灯效写入。") }
     func readBattery() throws -> DeviceBattery { throw DeviceProtocolError.message("此连接尚不支持电量读取。") }
 }
 
 /// 实例、回调以及所有 IOKit 操作仅在设备工作线程中使用。
 final class MacHIDTransport: DeviceTransport {
+    private(set) var acknowledgedKnobBrightness: UInt8?
     var heartbeatEnabled = false {
         didSet {
             if !heartbeatEnabled { lastHeartbeat = nil }
@@ -120,6 +127,7 @@ final class MacHIDTransport: DeviceTransport {
     }
 
     func close() {
+        acknowledgedKnobBrightness = nil
         softwareOnline = false
         heartbeatEnabled = false
         if let device = device {
@@ -168,13 +176,29 @@ final class MacHIDTransport: DeviceTransport {
 
     func queryOnline() throws -> Bool {
         let frame = try exchange(DeviceProtocol.onlineRequest, timeout: 0.8, matching: DeviceProtocol.matchesOnlineReply)
-        return try DeviceProtocol.parseOnline(frame)
+        let online = try DeviceProtocol.parseOnline(frame)
+        if !online { acknowledgedKnobBrightness = nil }
+        return online
     }
 
     func readBattery() throws -> DeviceBattery {
         let frame = try exchange(DeviceProtocol.batteryRequest, timeout: 0.8,
                                  matching: DeviceProtocol.matchesBatteryReply)
         return try DeviceProtocol.parseBattery(frame)
+    }
+
+    func readLighting() throws -> DeviceLighting {
+        try DeviceProtocol.parseLighting(exchange(DeviceProtocol.lightingRequest, matching: DeviceProtocol.matchesLightingReply))
+    }
+
+    func writeLighting(_ desired: DeviceLighting, expected: DeviceLighting, setKnobBrightness: Bool) throws {
+        for request in try DeviceProtocol.lightingWrites(desired, expected: expected, setKnobBrightness: setKnobBrightness) {
+            let knob = request[4] == 0x40 && request[5] == 3
+            // 超时后不能把之前的值继续当作这次命令已确认。
+            if knob { acknowledgedKnobBrightness = nil }
+            _ = try exchange(request) { DeviceProtocol.matchesLightingWriteReply($0, request: request) }
+            if knob { acknowledgedKnobBrightness = request[27] }
+        }
     }
 
     func takeKeyEvents() -> [VendorKeyEvent] {
@@ -241,14 +265,30 @@ final class MacHIDTransport: DeviceTransport {
 
 /// 演示路径只维护内存，不构造 IOKit 设备或调用输入权限 API。
 final class DemoHIDTransport: DeviceTransport {
+    private(set) var acknowledgedKnobBrightness: UInt8?
     var heartbeatEnabled = false {
         didSet { if !heartbeatEnabled { lastHeartbeat = nil } }
     }
     private var keys = DeviceProtocol.defaultCodes.enumerated().map { KeyBinding(index: $0.offset, entries: [KeyEntry(code: $0.element)]) }
+    private var lighting = DeviceLighting(mode: 2, brightness: 2, lights: (0..<4).map {
+        IndicatorLight(type: $0 == 0 ? 2 : 1, workTime: 10, breatheLevel: 2, breatheBrightness: 2, alwaysOnBrightness: 2)
+    })
+    func readLighting() throws -> DeviceLighting {
+        guard opened else { throw DeviceProtocolError.message("演示设备尚未连接。") }
+        return lighting
+    }
+    func writeLighting(_ desired: DeviceLighting, expected: DeviceLighting, setKnobBrightness: Bool) throws {
+        _ = try DeviceProtocol.lightingWrites(desired, expected: expected, setKnobBrightness: setKnobBrightness)
+        guard opened else { throw DeviceProtocolError.message("演示设备尚未连接。") }
+        if setKnobBrightness || desired.lights[3].alwaysOnBrightness != expected.lights[3].alwaysOnBrightness {
+            acknowledgedKnobBrightness = desired.lights[3].alwaysOnBrightness
+        }
+        lighting = desired
+    }
     private var opened = false
     private(set) var lastHeartbeat: Date?
     func open() throws { opened = true; heartbeatEnabled = false; lastHeartbeat = nil }
-    func close() { opened = false; heartbeatEnabled = false; lastHeartbeat = nil }
+    func close() { acknowledgedKnobBrightness = nil; opened = false; heartbeatEnabled = false; lastHeartbeat = nil }
     func pump(for duration: TimeInterval) throws {
         if opened, heartbeatEnabled, Date().timeIntervalSince(lastHeartbeat ?? .distantPast) >= 1 { lastHeartbeat = Date() }
     }

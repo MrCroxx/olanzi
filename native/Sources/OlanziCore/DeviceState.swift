@@ -54,6 +54,19 @@ public struct DeviceSnapshot: Equatable, Sendable {
     public var heartbeatEnabled = false
     public var lastHeartbeat: Date? = nil
     public var lastRead: Date? = nil
+    /// 始终保留原始 GET，不用命令确认值伪造设备回读。
+    public var lighting: DeviceLighting? = nil
+    public var lightingKnobBrightnessConfirmation: UInt8? = nil
+    public var effectiveLighting: DeviceLighting? {
+        guard var value = lighting else { return nil }
+        if let confirmed = lightingKnobBrightnessConfirmation, value.lights.count == 4 {
+            value.lights[3].alwaysOnBrightness = confirmed
+        }
+        return value
+    }
+    public var lightingError: String? = nil
+    public var lightingFailureFields: [String] = []
+    public var lightingResult: HostSaveResult? = nil
     public var battery: DeviceBattery? = nil
     public var batteryUpdatedAt: Date? = nil
     public var batteryError: String? = nil

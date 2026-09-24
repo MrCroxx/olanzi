@@ -20,7 +20,66 @@ final class AppModel: ObservableObject {
         didSet { gesture = .press }
     }
     @Published private(set) var draft: HostKeymap?
-    @Published var page = 0
+    @Published var page = 0 {
+        didSet {
+            guard page == 2, oldValue != 2 else { return }
+            lightingReadPending = lightingDraft == nil
+            readLightingIfNeeded()
+        }
+    }
+    private var lightingReadPending = false
+    @Published private var lightingFeedbackDismissed = false
+    @Published private(set) var lightingDraft: DeviceLighting?
+    @Published private(set) var lightingKnobBrightnessEdited = false
+    @Published private(set) var lightingReading = false
+    @Published private(set) var lightingSubmittedID: UUID?
+    private var lightingExpected: DeviceLighting?
+    private var lightingReadBecameBusy = false
+    var lighting: DeviceLighting? { lightingDraft ?? device.effectiveLighting }
+    var lightingKnobBrightnessKnown: Bool { lightingKnobBrightnessEdited || device.lightingKnobBrightnessConfirmation != nil }
+    var lightingBusy: Bool { device.busy || lightingReading || lightingSubmittedID != nil }
+    var canEditLighting: Bool { online && !lightingBusy && lighting != nil }
+    var canApplyLighting: Bool { canEditLighting && lightingDraft != nil }
+    func readLighting() {
+        guard online, !lightingBusy else { return }
+        guard lightingDraft == nil else { return }
+        lightingReadPending = false
+        lightingFeedbackDismissed = true
+        lightingReading = true
+        lightingReadBecameBusy = false
+        service.readLighting()
+    }
+    private func readLightingIfNeeded() {
+        guard page == 2, lightingReadPending, lightingDraft == nil else { return }
+        readLighting()
+    }
+    var lightingFailureText: String? {
+        guard !lightingFeedbackDismissed, !device.lightingFailureFields.isEmpty else { return nil }
+        return lf("未生效：%@", device.lightingFailureFields.map { l($0) }.joined(separator: l("，")))
+    }
+    var lightingErrorText: String? { lightingFeedbackDismissed ? nil : device.lightingError.map(displayError) }
+    func editLighting(_ edit: (inout DeviceLighting) -> Void) {
+        guard canEditLighting, var value = lighting else { return }
+        let expected = lightingExpected ?? device.effectiveLighting
+        edit(&value)
+        lightingFeedbackDismissed = true
+        lightingDraft = value == expected && !lightingKnobBrightnessEdited ? nil : value
+        lightingExpected = lightingDraft == nil ? nil : expected
+        notice = nil
+    }
+    func editKnobBrightness(_ brightness: UInt8) {
+        guard canEditLighting, brightness <= 20, lighting?.lights.indices.contains(3) == true else { return }
+        lightingKnobBrightnessEdited = true
+        editLighting { $0.lights[3].alwaysOnBrightness = brightness }
+    }
+    func applyLighting() {
+        guard canApplyLighting, let value = lightingDraft, let expected = lightingExpected else { return }
+        let id = UUID()
+        lightingFeedbackDismissed = true
+        lightingSubmittedID = id
+        service.applyLighting(value, expected: expected, requestID: id, setKnobBrightness: lightingKnobBrightnessEdited)
+    }
+
     static let heartbeatIdleMinutesOptions = [0, 1, 5, 10, 15, 30, 60]
     @Published private(set) var heartbeatIdleMinutes: Int
     func setHeartbeatIdleMinutes(_ minutes: Int) {
@@ -204,6 +263,7 @@ final class AppModel: ObservableObject {
         let changed = polledPermissions != latest
         if changed {
             polledPermissions = latest
+            readLightingIfNeeded()
             if !needsPermissionSetup { permissionMessage = nil }
         }
         // 不把每秒检查堆进设备任务队列，只有变化或用户回到应用时才强制复查。
@@ -666,7 +726,35 @@ final class AppModel: ObservableObject {
         service.applyHostKeymap(configuration, requestID: requestID)
     }
     func receive(_ snapshot: DeviceSnapshot) {
+        let wasOnline = online
         device = snapshot
+        if page == 2 && !wasOnline && online && lightingDraft == nil { lightingReadPending = true }
+        if lightingReading {
+            if snapshot.busy { lightingReadBecameBusy = true }
+            if lightingReadBecameBusy && !snapshot.busy {
+                lightingReading = false
+                lightingFeedbackDismissed = false
+            }
+        }
+        if let id = lightingSubmittedID, let result = snapshot.lightingResult, result.requestID == id {
+            if result.error == nil && snapshot.effectiveLighting == lightingDraft {
+                lightingDraft = nil
+                lightingExpected = nil
+                lightingKnobBrightnessEdited = false
+            } else {
+                if let actual = snapshot.effectiveLighting { lightingExpected = actual }
+            }
+            lightingFeedbackDismissed = false
+            lightingSubmittedID = nil
+        }
+        if !online {
+            lightingKnobBrightnessEdited = false
+            lightingDraft = nil
+            lightingExpected = nil
+            lightingReading = false
+            lightingReadBecameBusy = false
+        }
+        readLightingIfNeeded()
         if !needsPermissionSetup { permissionMessage = nil }
         if let saving = submitted, let result = snapshot.hostSaveResult,
            result.requestID == submittedID {

@@ -18,7 +18,7 @@ public enum DeviceProtocolError: Error, LocalizedError, Equatable {
     }
 }
 
-/// 已确认的 AU05 协议；不包含待验证的亮度、OTA 等写命令。
+/// AU05 基础协议；指示灯字段见 DeviceLighting，不包含 OTA 等未支持的写命令。
 public enum DeviceProtocol {
     public static let vendorID = 0xFFF1
     public static let productID = 0x00DD

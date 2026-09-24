@@ -138,7 +138,8 @@ struct ContentView: View {
                         if model.page == 0 {
                             keymap(availableHeight: viewport.size.height - 28,
                                    availableWidth: viewport.size.width - 48)
-                        } else { appSettings }
+                        } else if model.page == 2 { LightingSettingsView(model: model) }
+                        else { appSettings }
                     }
                     .padding(.horizontal, 24).padding(.vertical, model.page == 0 ? 14 : 20)
                     .frame(maxWidth: .infinity)
@@ -185,7 +186,7 @@ struct ContentView: View {
                 Text("OLANZI").font(.system(size: 17, weight: .bold, design: .rounded)).tracking(3)
             }
             Spacer()
-            ForEach(Array([(0, "keyboard", "键位"), (1, "gearshape", "设置")].enumerated()), id: \.offset) { _, item in
+            ForEach(Array([(0, "keyboard", "键位"), (2, "lightbulb", "灯效"), (1, "gearshape", "设置")].enumerated()), id: \.offset) { _, item in
                 Button { model.page = item.0 } label: {
                     Label(model.l(item.2), systemImage: item.1).font(.system(size: 14, weight: .medium))
                         .foregroundStyle(model.page == item.0 ? Palette.accent : Color.gray)
@@ -644,6 +645,7 @@ struct ContentView: View {
                     .foregroundStyle(.orange).padding(.horizontal, 28).padding(.vertical, 10)
             }
             Divider()
+            if model.page != 2 {
             HStack(spacing: 15) {
                 if model.page == 1 {
                     Button { NSApp.terminate(nil) } label: {
@@ -664,6 +666,7 @@ struct ContentView: View {
                 Button(model.l("保存到本机")) { model.apply() }.buttonStyle(OlanziButtonStyle(.primary))
                     .foregroundStyle(Palette.background).disabled(!model.hasDraft || !model.canEdit || model.device.busy || model.applying)
             }.controlSize(.large).padding(.horizontal, 28).padding(.vertical, 14)
+            }
         }
     }
 }

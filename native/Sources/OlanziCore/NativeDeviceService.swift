@@ -4,6 +4,7 @@ import Foundation
 public final class NativeDeviceService: @unchecked Sendable {
     private enum Job {
         case connect, disconnect, refresh, apply([KeyChange], [KeyBinding])
+        case readLighting, applyLighting(DeviceLighting, DeviceLighting, UUID, Bool)
         case permissions, checkPermissions
         case heartbeatIdleTimeout(TimeInterval?), resumeHeartbeat
         case applyHostKeymap(HostKeymap, UUID)
@@ -144,6 +145,10 @@ public final class NativeDeviceService: @unchecked Sendable {
     public func connect() { enqueue(.connect) }
     public func disconnect() { enqueue(.disconnect) }
     public func refresh() { enqueue(.refresh) }
+    public func readLighting() { enqueue(.readLighting) }
+    public func applyLighting(_ configuration: DeviceLighting, expected: DeviceLighting, requestID: UUID, setKnobBrightness: Bool = false) {
+        enqueue(.applyLighting(configuration, expected, requestID, setKnobBrightness))
+    }
     public func apply(changes: [KeyChange], expected: [KeyBinding]) { enqueue(.apply(changes, expected)) }
     /// 普通编辑只保存并激活本机动作，不写设备可编程按键表。
     public func applyHostKeymap(_ configuration: HostKeymap, requestID: UUID = UUID()) {
@@ -215,6 +220,10 @@ public final class NativeDeviceService: @unchecked Sendable {
                 disconnectDevice()
             case .refresh:
                 try refreshKeys()
+            case .readLighting:
+                readLightingState()
+            case .applyLighting(let desired, let expected, let requestID, let setKnobBrightness):
+                applyLightingState(desired, expected: expected, requestID: requestID, setKnobBrightness: setKnobBrightness)
             case .apply(let changes, let expected):
                 try applyKeys(changes, expected: expected)
             case .applyHostKeymap(let configuration, let requestID):
@@ -329,10 +338,80 @@ public final class NativeDeviceService: @unchecked Sendable {
             // 离线清掉可能丢失 up 的物理按住状态，但保持空闲暂停原因。
             heartbeatIdleTimer.reset(at: idleClock())
             clearBattery()
+            state.lighting = nil
+            state.lightingKnobBrightnessConfirmation = nil
+            state.lightingError = nil
+            state.lightingFailureFields = []
+            state.lightingResult = nil
             state.error = "接收器已连接，但 Vibe Key 本体离线，请长按电源键开机。"
         } else if state.online == true && (wasOnline != true || state.keys.isEmpty) {
             if wasOnline != true { nextBatteryCheck = 0 }
             try refreshKeys()
+        }
+    }
+
+    private func lightingTransport() throws -> DeviceTransport {
+        guard state.connected, state.online == true, !isInputSuspended, let transport else {
+            throw DeviceProtocolError.message("请先连接并唤醒设备。")
+        }
+        return transport
+    }
+
+    private func readLightingState() {
+        state.lightingFailureFields = []
+        state.lightingResult = nil
+        do {
+            let value = try lightingTransport().readLighting()
+            guard !isInputSuspended else { throw DeviceProtocolError.message("请先连接并唤醒设备。") }
+            state.lighting = value
+            state.lightingKnobBrightnessConfirmation = transport?.acknowledgedKnobBrightness
+            state.lightingError = nil
+        } catch {
+            state.lighting = nil
+            state.lightingError = error.localizedDescription
+        }
+    }
+
+    private func applyLightingState(_ desired: DeviceLighting, expected: DeviceLighting, requestID: UUID, setKnobBrightness: Bool) {
+        var attemptedWrite = false
+        state.lightingFailureFields = []
+        state.lightingError = nil
+        do {
+            _ = try DeviceProtocol.lightingWrites(desired, expected: expected, setKnobBrightness: setKnobBrightness)
+            let transport = try lightingTransport()
+            let current = try transport.readLighting()
+            state.lighting = current
+            // wire[27] 已由实物验证会返回旧值，不能作为冲突依据。
+            guard current.differingFields(from: expected, ignoringKnobBrightness: true).isEmpty,
+                  transport.acknowledgedKnobBrightness == nil || transport.acknowledgedKnobBrightness == expected.lights[3].alwaysOnBrightness else { throw DeviceProtocolError.message("设备灯效已变化，请重新读取后再应用。") }
+            guard !isInputSuspended else { throw DeviceProtocolError.message("请先连接并唤醒设备。") }
+            attemptedWrite = true
+            try transport.writeLighting(desired, expected: expected, setKnobBrightness: setKnobBrightness)
+            state.lightingKnobBrightnessConfirmation = transport.acknowledgedKnobBrightness
+            let actual = try transport.readLighting()
+            guard !isInputSuspended else { throw DeviceProtocolError.message("请先连接并唤醒设备。") }
+            state.lighting = actual
+            var failures = desired.differingFields(from: actual, ignoringKnobBrightness: true)
+            let knobChanged = setKnobBrightness || desired.lights[3].alwaysOnBrightness != expected.lights[3].alwaysOnBrightness
+            if knobChanged && transport.acknowledgedKnobBrightness != desired.lights[3].alwaysOnBrightness {
+                failures.append("旋钮常亮亮度")
+            }
+            guard failures.isEmpty else {
+                state.lightingFailureFields = failures
+                state.lightingResult = HostSaveResult(requestID: requestID, error: "部分灯效未生效。")
+                return
+            }
+            state.lightingError = nil
+            state.lightingResult = HostSaveResult(requestID: requestID)
+        } catch {
+            // 多条设备写入没有事务保证；失败后尽量读回，不自动回滚覆盖设备状态。
+            if attemptedWrite {
+                state.lighting = try? lightingTransport().readLighting()
+                state.lightingKnobBrightnessConfirmation = transport?.acknowledgedKnobBrightness
+            }
+            let message = error.localizedDescription
+            state.lightingError = message
+            state.lightingResult = HostSaveResult(requestID: requestID, error: message)
         }
     }
 
@@ -441,6 +520,11 @@ public final class NativeDeviceService: @unchecked Sendable {
         state.online = nil
         lastConfirmedOnline = nil
         state.keys = []
+        state.lighting = nil
+        state.lightingKnobBrightnessConfirmation = nil
+        state.lightingError = nil
+        state.lightingFailureFields = []
+        state.lightingResult = nil
         clearBattery()
         nextBatteryCheck = 0
         state.lastRead = nil

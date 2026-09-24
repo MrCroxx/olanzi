@@ -34,7 +34,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var lightingReading = false
     @Published private(set) var lightingSubmittedID: UUID?
     private var lightingExpected: DeviceLighting?
-    private var lightingSubmitted: DeviceLighting?
     private var lightingReadBecameBusy = false
     var lighting: DeviceLighting? { lightingDraft ?? device.effectiveLighting }
     var lightingKnobBrightnessKnown: Bool { lightingKnobBrightnessEdited || device.lightingKnobBrightnessConfirmation != nil }
@@ -77,7 +76,6 @@ final class AppModel: ObservableObject {
         guard canApplyLighting, let value = lightingDraft, let expected = lightingExpected else { return }
         let id = UUID()
         lightingFeedbackDismissed = true
-        lightingSubmitted = value
         lightingSubmittedID = id
         service.applyLighting(value, expected: expected, requestID: id, setKnobBrightness: lightingKnobBrightnessEdited)
     }
@@ -119,7 +117,7 @@ final class AppModel: ObservableObject {
     var noticeSymbol: String {
         switch noticeMessage?.source {
         case "键位已保存到本机。", "已保存提交的配置，后续编辑仍保留在草稿中。",
-             "配置已保存在这台 Mac。", "演示配置已保存，退出后清除。", "系统权限已就绪。", "灯效已应用并回读确认。":
+             "配置已保存在这台 Mac。", "演示配置已保存，退出后清除。", "系统权限已就绪。":
             return "checkmark.circle.fill"
         default: return "info.circle"
         }
@@ -739,7 +737,7 @@ final class AppModel: ObservableObject {
             }
         }
         if let id = lightingSubmittedID, let result = snapshot.lightingResult, result.requestID == id {
-            if result.error == nil && snapshot.effectiveLighting == lightingSubmitted {
+            if result.error == nil && snapshot.effectiveLighting == lightingDraft {
                 lightingDraft = nil
                 lightingExpected = nil
                 lightingKnobBrightnessEdited = false
@@ -747,7 +745,6 @@ final class AppModel: ObservableObject {
                 if let actual = snapshot.effectiveLighting { lightingExpected = actual }
             }
             lightingFeedbackDismissed = false
-            lightingSubmitted = nil
             lightingSubmittedID = nil
         }
         if !online {

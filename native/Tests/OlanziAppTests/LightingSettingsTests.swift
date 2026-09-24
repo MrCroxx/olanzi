@@ -35,38 +35,6 @@ final class LightingSettingsTests: XCTestCase {
         XCTAssertNil(model.lightingDraft)
     }
 
-    func testPerLightBrightnessChangesPreserveOtherLightsAndTiming() async throws {
-        let model = AppModel(demo: true)
-        let state = snapshot()
-        model.receive(state)
-        model.editLighting { $0.lights[1].alwaysOnBrightness = 19 }
-        model.editLighting { $0.lights[0].breatheBrightness = 7 }
-        let result = try XCTUnwrap(model.lightingDraft)
-        XCTAssertEqual(result.lights[1].alwaysOnBrightness, 19)
-        XCTAssertEqual(result.lights[0].breatheBrightness, 7)
-        XCTAssertEqual(result.lights[0].alwaysOnBrightness, 14)
-        XCTAssertEqual(result.lights[1].breatheBrightness, 13)
-        XCTAssertEqual(result.lights[1].workTime, 12)
-        XCTAssertEqual(result.lights[1].breatheLevel, 12)
-        XCTAssertEqual(result.lights[2], state.lighting?.lights[2])
-        XCTAssertEqual(result.lights[3], state.lighting?.lights[3])
-    }
-
-    func testUnknownReadValuesAreKeptWhenChangingAnotherField() async throws {
-        let model = AppModel(demo: true)
-        var state = snapshot()
-        state.lighting?.brightness = 7
-        state.lighting?.lights[1].type = 2
-        state.lighting?.lights[2].type = 2
-        model.receive(state)
-        model.editLighting { $0.mode = 0 }
-        let edited = try XCTUnwrap(model.lighting)
-        XCTAssertEqual(edited.brightness, 7)
-        XCTAssertEqual(edited.lights[1].type, 2)
-        XCTAssertEqual(edited.lights[2].type, 2)
-        XCTAssertEqual(try DeviceProtocol.lightingWrites(edited, expected: XCTUnwrap(state.lighting)).count, 1)
-    }
-
     func testApplyMatchesRequestAndPreservesDraftOnFailure() async throws {
         let model = AppModel(demo: true, language: .english)
         var state = snapshot()

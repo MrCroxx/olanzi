@@ -139,14 +139,10 @@ at login is not configured.
 ### Device support
 
 Olanzi currently supports **AU05 key and knob actions and lighting controls**.
-Opening the Lighting tab loads current settings automatically. Choose a global mode,
-all-on brightness from 0–20, or individual work-mode lights and their
-brightness from 0–20, then apply the changes.
-The knob brightness change from 0 to 20 was physically confirmed; other effects
-and persistence after power-off still need verification. Its displayed brightness
-uses this connection’s last acknowledged command because device readback is stale;
-see the [native app guide](docs/09-native-macos.md). Firmware updates, multimedia
-output, and other Ulanzi devices are not yet supported in the app. Some advanced gesture and layer combinations still
+The Lighting tab loads settings automatically and provides global and per-light controls.
+For protocol details and verification limits, see the [lighting protocol](docs/02-vibekey-protocol.md).
+Firmware updates, multimedia output, and other Ulanzi devices are not yet
+supported in the app. Some advanced gesture and layer combinations still
 need physical-device verification; see the [input runtime guide](docs/10-input-runtime.md)
 for behavior and validation limits.
 

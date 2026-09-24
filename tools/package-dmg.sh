@@ -42,6 +42,7 @@ trap 'exit 143' TERM
 mkdir -p "$work/staging" "$mount_point"
 ditto "$app" "$work/staging/Olanzi.app"
 ln -s /Applications "$work/staging/Applications"
+cp "$app/Contents/Resources/AppIcon.icns" "$work/VolumeIcon.icns"
 
 # 从已签名 App 的公开证书取得身份，让 DMG 与 App 使用相同证书，不导出私钥。
 codesign --display --extract-certificates="$work/cert-" "$app"
@@ -49,7 +50,15 @@ signing_identity=-
 if [[ -f "$work/cert-0" ]]; then
     signing_identity="$(shasum -a 1 "$work/cert-0" | awk '{print $1}')"
 fi
-hdiutil create -volname Olanzi -srcfolder "$work/staging" -format UDZO -fs HFS+ "$work/Olanzi.dmg"
+hdiutil create -volname Olanzi -srcfolder "$work/staging" -format UDRW -fs HFS+ "$work/writable.dmg"
+# 卷图标必须写入镜像内部，下载或复制 DMG 后仍然保留。
+mounted=1
+hdiutil attach "$work/writable.dmg" -nobrowse -mountpoint "$mount_point" -quiet
+cp "$work/VolumeIcon.icns" "$mount_point/.VolumeIcon.icns"
+xcrun SetFile -a C "$mount_point"
+detach_image
+hdiutil convert "$work/writable.dmg" -format UDZO -o "$work/Olanzi.dmg"
+swift "$root/tools/set-file-icon.swift" "$work/VolumeIcon.icns" "$work/Olanzi.dmg"
 codesign --force --sign "$signing_identity" --identifier com.mrcroxx.olanzi.dmg "$work/Olanzi.dmg"
 codesign --verify --strict "$work/Olanzi.dmg"
 hdiutil verify "$work/Olanzi.dmg"
@@ -60,6 +69,9 @@ hdiutil attach "$work/Olanzi.dmg" -readonly -nobrowse -mountpoint "$mount_point"
 codesign --verify --strict "$mount_point/Olanzi.app"
 diff -qr "$app" "$mount_point/Olanzi.app"
 [[ -L "$mount_point/Applications" && "$(readlink "$mount_point/Applications")" == /Applications ]]
+cmp "$work/VolumeIcon.icns" "$mount_point/.VolumeIcon.icns"
+[[ "$(xcrun GetFileInfo -a "$mount_point")" == *C* ]]
+[[ "$(xcrun GetFileInfo -a "$work/Olanzi.dmg")" == *C* ]]
 detach_image
 mv -f "$work/Olanzi.dmg" "$output"
 echo "DMG: $output"

@@ -413,6 +413,8 @@ struct ContentView: View {
                     Text(model.l("按键如何响应")).font(.headline)
                     if model.isLayerSwitch(model.selected) {
                         Text(model.l("单击切层在按下时立即生效；长按动作达到设定时间后执行，松开时退出切层。"))
+                    } else if case .scroll = model.action(model.selected, gesture: model.gesture) {
+                        Text(model.l("滚动鼠标指针所在区域；每次触发滚动一次，不保持按住或连按。"))
                     } else {
                         Text(model.l("只设置单击且选择保持按住时，按下立即生效，松开释放。"))
                         Text(model.l("单击、双击和长按决定何时触发；每个动作的按键输出可独立设置为保持按住、短按一次或连按指定次数。"))

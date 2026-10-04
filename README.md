@@ -34,6 +34,7 @@ long-press assignments together, without opening a separate editor for every key
 
 Make each control useful for the way you work:
 
+- **Scroll pages with the knob.** Assign upward or downward pixel scrolling in the Scroll category and adjust the distance per tick. Scroll acts on the area under the pointer.
 - **Assign keys and combinations.** Choose letters, symbols, navigation keys,
   function keys, modifiers, or Mac Fn. Record combinations with the keyboard.
 - **Give a key more than one job.** The three keys and knob press each support

@@ -485,3 +485,14 @@
 "旋钮呼吸亮度" = "Knob breathing brightness";
 "旋钮常亮亮度" = "Knob steady brightness";
 "设备不返回当前亮度，显示本次连接内已设置的值。" = "The device does not report its current brightness. This shows the value set during this connection.";
+"滚动" = "Scroll";
+"向上滚动" = "Scroll Up";
+"向下滚动" = "Scroll Down";
+"向上滚动 · %d 像素" = "Scroll Up · %d px";
+"向下滚动 · %d 像素" = "Scroll Down · %d px";
+"每次滚动 %d 像素" = "Scroll %d px per trigger";
+"滚动鼠标指针所在区域；每次触发滚动一次，不保持按住或连按。" = "Scroll the area under the pointer once per trigger. Hold and repeat settings do not apply.";
+"每次滚动应为 1–600 像素，不能为零。" = "Each scroll must be 1–600 pixels and cannot be zero.";
+"无法创建 macOS 滚动事件源。" = "Could not create a macOS scroll event source.";
+"无法创建 macOS 滚动事件。" = "Could not create a macOS scroll event.";
+"滚动动作必须直接执行，不能放入宏队列。" = "Scroll actions must run directly and cannot be queued as macros.";

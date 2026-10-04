@@ -31,7 +31,7 @@ struct ActionPalette: View {
     private var libraryKind: LibraryActionKind? {
         category == "宏" ? .macro : category == "APP" ? .application : nil
     }
-    private var categories: [String] { ["常用", "字符", "功能键", "数字键盘", "组合键", "Layer", "APP", "宏"] }
+    private var categories: [String] { ["常用", "字符", "功能键", "数字键盘", "组合键", "滚动", "Layer", "APP", "宏"] }
     private var keyGroups: [String] {
         switch category {
         case "常用": return ["常用", "导航", "修饰键"]
@@ -56,6 +56,7 @@ struct ActionPalette: View {
         switch name {
         case "常用": return "star"
         case "组合键": return "command"
+        case "滚动": return "arrow.up.arrow.down"
         case "Layer": return "square.stack"
         case "APP": return "app"
         case "宏": return "list.bullet.rectangle"
@@ -101,6 +102,8 @@ struct ActionPalette: View {
                     layers
                 } else if category == "组合键" {
                     ShortcutAssignmentEditor(model: model)
+                } else if category == "滚动" {
+                    ScrollAssignmentEditor(model: model)
                 } else {
                     keyboard
                 }
@@ -231,6 +234,63 @@ struct ActionPalette: View {
                     .help(model.lf("%d 个绑定", model.usageCount(item.id)))
             }
         }
+    }
+}
+
+private struct ScrollAssignmentEditor: View {
+    @ObservedObject var model: AppModel
+    @State private var pixels = AppModel.defaultScrollPixels
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(model.l("滚动")).font(.headline)
+            Text(model.l("滚动鼠标指针所在区域；每次触发滚动一次，不保持按住或连按。"))
+                .font(.callout).foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                ForEach([true, false], id: \.self) { upward in
+                    Button { model.assignScroll(upward: upward, pixels: pixels) } label: {
+                        Label(model.l(upward ? "向上滚动" : "向下滚动"),
+                              systemImage: upward ? "arrow.up" : "arrow.down")
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(KeycapButtonStyle(selected: !model.isInherited(model.selected, gesture: model.gesture)
+                        && model.assignedAction(model.selected, gesture: model.gesture)
+                            == .scroll(vertical: upward ? pixels : -pixels)))
+                    .disabled(!model.canEdit)
+                }
+            }
+            Stepper(value: $pixels, in: 20...600, step: 20) {
+                Text(model.lf("每次滚动 %d 像素", pixels)).monospacedDigit()
+            }
+            .frame(maxWidth: 280).disabled(!model.canEdit)
+            .onChange(of: pixels) { _, value in
+                if case .scroll(let vertical) = model.action(model.selected, gesture: model.gesture),
+                   abs(vertical) != value {
+                    model.assignScroll(upward: vertical > 0, pixels: value)
+                }
+            }
+            HStack(spacing: 8) { specialActions }
+        }
+        .onAppear { synchronizePixels() }
+        .onChange(of: model.selected) { _, _ in synchronizePixels() }
+        .onChange(of: model.gesture) { _, _ in synchronizePixels() }
+        .onChange(of: model.selectedLayer) { _, _ in synchronizePixels() }
+        .onChange(of: model.action(model.selected, gesture: model.gesture)) { _, _ in synchronizePixels() }
+    }
+
+    private var specialActions: some View {
+        Group {
+            Button(model.l("继承当前动作")) { model.inheritAction() }
+                .disabled(!model.canEdit || model.selectedLayer == 0)
+            Button(model.l("不执行动作")) { model.clearAction() }
+                .disabled(!model.canEdit)
+        }
+    }
+
+    private func synchronizePixels() {
+        if case .scroll(let vertical) = model.action(model.selected, gesture: model.gesture) {
+            pixels = abs(vertical)
+        } else { pixels = AppModel.defaultScrollPixels }
     }
 }
 

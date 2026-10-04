@@ -11,6 +11,7 @@ enum AssignmentGesture: String, CaseIterable, Identifiable {
 
 @MainActor
 final class AppModel: ObservableObject {
+    nonisolated static let defaultScrollPixels = 60
     @Published var device = DeviceSnapshot()
     @Published var selected = 0 {
         didSet { if selected >= 4 { gesture = .press } }
@@ -432,6 +433,8 @@ final class AppModel: ObservableObject {
         case .keyboard(let entries): return actionLabel(entries: entries)
         case .application(let target): return lf("切换到 %@", target.name)
         case .macro(let steps): return lf("宏 · %d 步", steps.count)
+        case .scroll(let vertical):
+            return lf(vertical > 0 ? "向上滚动 · %d 像素" : "向下滚动 · %d 像素", abs(vertical))
         case .library(let id):
             guard let item = libraryItems.first(where: { $0.id == id }) else { return l("引用的功能不存在，请重新选择。") }
             return libraryItemLabel(item)
@@ -510,6 +513,11 @@ final class AppModel: ObservableObject {
         return assignAction(.keyboard(entries), index: index, gesture: gesture)
     }
     @discardableResult
+    func assignScroll(upward: Bool, pixels: Int = AppModel.defaultScrollPixels) -> Bool {
+        guard pixels > 0, pixels <= 600 else { return false }
+        return assignAction(.scroll(vertical: upward ? pixels : -pixels))
+    }
+    @discardableResult
     func assignAction(_ action: HostAction, index: Int? = nil, gesture: AssignmentGesture? = nil) -> Bool {
         let index = index ?? selected
         guard canEdit else { return false }
@@ -573,7 +581,7 @@ final class AppModel: ObservableObject {
         switch action {
         case .macro: isMacro = true
         case .application: isMacro = false
-        case .keyboard, .library, .momentaryLayer: notice = "功能库只能保存 APP 或宏，不能嵌套引用。"; return nil
+        case .keyboard, .library, .momentaryLayer, .scroll: notice = "功能库只能保存 APP 或宏，不能嵌套引用。"; return nil
         }
         let slot: Int
         if let previous, previous.isMacro == isMacro { slot = previous.slot }

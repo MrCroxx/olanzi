@@ -66,6 +66,8 @@ final class HostActionRunner {
     @discardableResult
     func enqueue(index: Int, action: HostAction) throws -> Bool {
         try action.validate()
+        // 滚动由桥接立即发布，每一格都必须执行，不能被宏队列去重。
+        if case .scroll = action { throw HostActionError.unsupportedMacroAction }
         guard current?.index != index, !queue.contains(where: { $0.index == index }),
               queue.count + (current == nil ? 0 : 1) < 8 else { return false }
         let steps: [MacroStep]
@@ -75,6 +77,7 @@ final class HostActionRunner {
         case .macro(let sequence): steps = sequence
         case .library: throw HostActionError.missingLibraryAction
         case .momentaryLayer: throw HostKeymapError.invalidLayerAction
+        case .scroll: throw HostActionError.unsupportedMacroAction
         }
         queue.append(Work(index: index, steps: steps))
         return true

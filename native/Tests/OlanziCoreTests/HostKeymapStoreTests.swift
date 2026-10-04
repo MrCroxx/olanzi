@@ -60,7 +60,7 @@ final class HostKeymapStoreTests: XCTestCase {
     func testFutureSchemaReportsVersionBeforeDecodingUnknownActionsAndPreservesFile() throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(keymap())) as? [String: Any])
-        object["version"] = 6
+        object["version"] = 7
         var controls = try XCTUnwrap(object["controls"] as? [[String: Any]])
         controls[0]["pressAction"] = ["futureAction": ["_0": 2]]
         object["controls"] = controls

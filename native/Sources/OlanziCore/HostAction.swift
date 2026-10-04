@@ -34,11 +34,13 @@ public enum HostAction: Codable, Equatable, Sendable {
     case macro([MacroStep])
     case library(UUID)
     case momentaryLayer(Int)
+    case scroll(vertical: Int)
 
     public func validate() throws {
         switch self {
         // 引用目标由整份配置校验；UUID 自身没有额外格式需要校验。
         case .library: break
+        case .scroll(let vertical): try MacScrollEmitter.validate(vertical: vertical)
         case .momentaryLayer(let layer):
             guard (1...3).contains(layer) else { throw HostKeymapError.invalidLayer }
         case .keyboard(let entries): try MacKeyEmitter.validate(entries: entries)
@@ -60,9 +62,11 @@ public enum HostAction: Codable, Equatable, Sendable {
 public enum HostActionError: LocalizedError, Equatable {
     case invalidApplication, invalidStepCount, invalidDelay, applicationUnavailable, activationFailed, foregroundChanged
     case invalidLibraryName, invalidLibrarySlot, invalidLibraryAction, duplicateLibraryEntry, missingLibraryAction
+    case unsupportedMacroAction
 
     public var errorDescription: String? {
         switch self {
+        case .unsupportedMacroAction: return "滚动动作必须直接执行，不能放入宏队列。"
         case .invalidLibraryName: return "功能名称不能为空，且不能超过 80 个字符。"
         case .invalidLibrarySlot: return "宏和 APP 功能各支持 16 个编号（0–15）。"
         case .invalidLibraryAction: return "功能库只能保存 APP 或宏，不能嵌套引用。"
@@ -103,7 +107,7 @@ public struct NamedHostAction: Codable, Equatable, Identifiable, Sendable {
         guard (0..<16).contains(slot) else { throw HostActionError.invalidLibrarySlot }
         switch action {
         case .application, .macro: try action.validate()
-        case .keyboard, .library, .momentaryLayer: throw HostActionError.invalidLibraryAction
+        case .keyboard, .library, .momentaryLayer, .scroll: throw HostActionError.invalidLibraryAction
         }
     }
 }

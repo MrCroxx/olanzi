@@ -18,14 +18,17 @@ final class VendorKeyBridge {
     private let request: () -> Void
     private let prepare: () throws -> Void
     private let emit: ([KeyEntry], Bool, CGEventFlags) throws -> Void
+    private let scroll: (Int) throws -> Void
     private let now: () -> TimeInterval
     private let log = Logger(subsystem: "com.mrcroxx.olanzi", category: "device-input")
 
     convenience init() {
         let access = NativeFnBackend()
         let emitter = MacKeyEmitter()
+        let scrollEmitter = MacScrollEmitter()
         self.init(permissions: { access.permissions() }, request: { access.requestPermissions() },
                   prepare: { try emitter.prepareFnMonitoring() },
+                  scroll: { try scrollEmitter.emit(vertical: $0) },
                   emit: { try emitter.emit(entries: $0, pressed: $1, heldModifiers: $2) })
     }
 
@@ -34,6 +37,7 @@ final class VendorKeyBridge {
          prepare: @escaping () throws -> Void = {},
          now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          launcher: ApplicationLauncher = .native,
+         scroll: @escaping (Int) throws -> Void = { _ in },
          emit: @escaping ([KeyEntry], Bool, CGEventFlags) throws -> Void) {
         self.actions = HostActionRunner(launcher: launcher)
         self.permissions = permissions
@@ -41,6 +45,7 @@ final class VendorKeyBridge {
         self.prepare = prepare
         self.now = now
         self.emit = emit
+        self.scroll = scroll
     }
 
     func synchronize(configuration: HostKeymap?, connected: Bool, online: Bool?) {
@@ -120,7 +125,14 @@ final class VendorKeyBridge {
             do {
                 switch transition {
                 case .execute(let index, let action):
-                    try actions.enqueue(index: index, action: action)
+                    if case .scroll(let vertical) = action {
+                        // 独立滚动事件不获取键盘所有权，也不释放仍按住的听写组合键。
+                        try MacScrollEmitter.validate(vertical: vertical)
+                        try scroll(vertical)
+                        status.events += 1
+                    } else {
+                        try actions.enqueue(index: index, action: action)
+                    }
                     completed = true
                 case .begin(let index, let entries):
                     try press(index: index, entries: entries)

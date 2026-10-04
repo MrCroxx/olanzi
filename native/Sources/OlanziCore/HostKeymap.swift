@@ -139,6 +139,12 @@ public struct HostKeymap: Codable, Equatable, Sendable {
     }
     private var allControls: [ControlActionMap] { controls + layers.flatMap(\.controls) }
     private var requiredVersion: Int {
+        if allControls.contains(where: { control in
+            [control.pressAction, control.doublePressAction, control.longPressAction].contains { action in
+                if case .scroll = action { return true }
+                return false
+            }
+        }) { return 6 }
         if allControls.contains(where: { $0.pressBehavior != .hold || $0.pressTapCount != 2
             || $0.doublePressBehavior != .tap || $0.doublePressTapCount != 2 || !$0.inheritedGestures.isEmpty }) { return 5 }
         if !layers.isEmpty || allControls.contains(where: { control in
@@ -156,7 +162,7 @@ public struct HostKeymap: Codable, Equatable, Sendable {
         return hasExtendedActions ? 2 : 1
     }
     private mutating func normalizeVersion() {
-        if (1...5).contains(version) { version = requiredVersion }
+        if (1...6).contains(version) { version = requiredVersion }
     }
     private var hasExtendedActions: Bool {
         controls.contains { $0.pressAction != nil || $0.doublePressAction != nil || $0.longPressAction != nil }
@@ -183,7 +189,7 @@ public struct HostKeymap: Codable, Equatable, Sendable {
     }
 
     public func validate() throws {
-        guard (1...5).contains(version), version >= requiredVersion else {
+        guard (1...6).contains(version), version >= requiredVersion else {
             throw HostKeymapError.unsupportedVersion
         }
         guard controls.count == 6, Set(controls.map(\.index)) == Set(0..<6) else {
@@ -255,7 +261,7 @@ public struct HostKeymap: Codable, Equatable, Sendable {
         guard let item = actionLibrary.first(where: { $0.id == id }) else { return nil }
         switch item.action {
         case .application, .macro: return item.action
-        case .keyboard, .library, .momentaryLayer: return nil
+        case .keyboard, .library, .momentaryLayer, .scroll: return nil
         }
     }
 
@@ -318,7 +324,7 @@ public struct HostKeymap: Codable, Equatable, Sendable {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         version = try values.decode(Int.self, forKey: .version)
         // 新版动作可能无法解码，先报告版本不兼容，避免误报配置损坏。
-        guard (1...5).contains(version) else { throw HostKeymapError.unsupportedVersion }
+        guard (1...6).contains(version) else { throw HostKeymapError.unsupportedVersion }
         controls = try values.decode([ControlActionMap].self, forKey: .controls)
         actionLibrary = try values.decodeIfPresent([NamedHostAction].self, forKey: .actionLibrary) ?? []
         layers = try values.decodeIfPresent([HostLayer].self, forKey: .layers) ?? []

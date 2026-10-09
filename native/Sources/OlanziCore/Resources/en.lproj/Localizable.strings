@@ -485,3 +485,8 @@
 "旋钮呼吸亮度" = "Knob breathing brightness";
 "旋钮常亮亮度" = "Knob steady brightness";
 "设备不返回当前亮度，显示本次连接内已设置的值。" = "The device does not report its current brightness. This shows the value set during this connection.";
+"登录时启动" = "Launch at Login";
+"登录 Mac 后在菜单栏运行，不打开主窗口。" = "Run in the menu bar after logging in to your Mac, without opening the main window.";
+"需要在系统设置中允许登录项。" = "Allow the login item in System Settings.";
+"打开登录项设置…" = "Open Login Items Settings…";
+"无法更新登录项：%@" = "Could not update the login item: %@";

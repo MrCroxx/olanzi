@@ -46,6 +46,7 @@ struct ContentView: View {
                 Label(model.l("界面语言"), systemImage: "globe").font(.body)
                 languagePicker.labelsHidden().frame(width: 200)
             }
+            LoginItemSettingsView(model: model)
             deviceSettings
             profiles
         }

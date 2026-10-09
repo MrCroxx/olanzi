@@ -133,8 +133,7 @@ for installation, permissions, and signing.
 Normal edits save to `~/Library/Application Support/Olanzi/host-keymap.json`.
 They do not rewrite the device's own key table. Use **Settings → Key Profiles** to save,
 export, and import setups; after loading one, save it to activate it.
-Olanzi needs to remain running for host actions to work. Automatic startup
-at login is not configured.
+Olanzi needs to remain running for host actions to work. Enable **Settings → Launch at Login** to start Olanzi in the menu bar when you log in to your Mac.
 
 ### Device support
 

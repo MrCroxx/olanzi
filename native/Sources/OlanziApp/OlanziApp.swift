@@ -48,7 +48,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
                                            name: NSWorkspace.willSleepNotification, object: nil)
         workspaceNotifications.addObserver(self, selector: #selector(systemDidWake(_:)),
                                            name: NSWorkspace.didWakeNotification, object: nil)
-        if !CommandLine.arguments.contains("--background") { showWindow() }
+        let launchEvent = NSAppleEventManager.shared().currentAppleEvent
+        let launchedAtLogin = launchEvent?.eventID == kAEOpenApplication &&
+            launchEvent?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+        if !CommandLine.arguments.contains("--background") && !launchedAtLogin { showWindow() }
     }
     func applicationDidBecomeActive(_ notification: Notification) {
         model?.refreshPermissions()

@@ -79,7 +79,7 @@ The main window has two navigation tabs: **Keys** and **Settings**. Settings com
 
 Choose Quit from the application menu, or use the red power button at the bottom left of Settings, to stop the app and device worker. Shutdown attempts to release any synthetic Fn hold and closes the device interfaces. Closing a window is therefore different from quitting the app. Computer sleep interrupts continued heartbeat delivery regardless of whether the window is open.
 
-No login item, `launchd` service, or automatic startup at boot is installed. Start the app manually when needed. Its menu-bar presence provides the background lifetime; a separate Python daemon is unnecessary.
+Enable **Settings → Launch at Login** to register the app with macOS. On subsequent logins, Olanzi runs in the menu bar without opening its main window. Turn the switch off to unregister it. If approval is required, use **Open Login Items Settings…**; returning to Olanzi refreshes the system status. Install the app in Applications before enabling this option. Demo mode cannot change login items. A separate Python daemon is unnecessary.
 
 ## 4. Host actions and heartbeat
 
